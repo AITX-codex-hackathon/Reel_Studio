@@ -1,4 +1,4 @@
-"""FAL image-to-video — drop-in replacement for RunwayClient."""
+"""FAL image-to-video and text-to-video via Kling v1.6."""
 from __future__ import annotations
 
 import base64
@@ -9,16 +9,22 @@ from typing import Optional
 
 log = logging.getLogger(__name__)
 
-_MODEL = "fal-ai/kling-video/v1.6/standard/image-to-video"
+_I2V_MODEL = "fal-ai/kling-video/v1.6/standard/image-to-video"
+_T2V_MODEL = "fal-ai/kling-video/v1.6/standard/text-to-video"
 
 
 class FalClient:
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("FAL_API_KEY")
+        # Accept both FAL_API_KEY (our config) and FAL_KEY (fal-client library convention)
+        self.api_key = api_key or os.getenv("FAL_API_KEY") or os.getenv("FAL_KEY")
 
     @property
     def enabled(self) -> bool:
         return bool(self.api_key)
+
+    def _setup_env(self) -> None:
+        if self.api_key:
+            os.environ["FAL_KEY"] = self.api_key
 
     async def image_to_video(
         self,
@@ -26,46 +32,81 @@ class FalClient:
         prompt: str,
         out_path: Path,
         duration_sec: float = 5.0,
-        ratio: str = "768:1280",
+        ratio: str = "9:16",
     ) -> Optional[Path]:
         if not self.enabled:
-            log.info("FAL disabled (no FAL_API_KEY) — skipping generative motion")
+            log.info("FAL disabled — no API key")
             return None
 
         try:
             import fal_client  # type: ignore
         except ImportError:
-            log.warning("fal-client not installed — `pip install fal-client`")
+            log.warning("fal-client not installed")
             return None
 
-        try:
-            import httpx  # type: ignore
-        except ImportError:
-            log.warning("httpx not installed — `pip install httpx`")
-            return None
-
-        os.environ.setdefault("FAL_KEY", self.api_key)
+        self._setup_env()
 
         with open(image_path, "rb") as f:
-            ext = image_path.suffix.lstrip(".").lower() or "jpg"
+            ext = image_path.suffix.lstrip(".").lower() or "jpeg"
             if ext == "jpg":
                 ext = "jpeg"
             data_url = f"data:image/{ext};base64,{base64.b64encode(f.read()).decode()}"
 
-        duration_str = "5" if duration_sec < 7 else "10"
-
         try:
             result = await fal_client.run_async(
-                _MODEL,
+                _I2V_MODEL,
                 arguments={
                     "image_url": data_url,
                     "prompt": prompt,
-                    "duration": duration_str,
-                    "aspect_ratio": "9:16",
+                    "duration": "5",
+                    "aspect_ratio": ratio,
                 },
             )
         except Exception as e:
             log.exception("FAL i2v failed: %s", e)
+            return None
+
+        return await self._download(result, out_path)
+
+    async def text_to_video(
+        self,
+        prompt: str,
+        out_path: Path,
+        ratio: str = "9:16",
+    ) -> Optional[Path]:
+        """Generate a 5s clip from prompt alone — used when no source image is available."""
+        if not self.enabled:
+            log.info("FAL disabled — no API key")
+            return None
+
+        try:
+            import fal_client  # type: ignore
+        except ImportError:
+            log.warning("fal-client not installed")
+            return None
+
+        self._setup_env()
+
+        try:
+            result = await fal_client.run_async(
+                _T2V_MODEL,
+                arguments={
+                    "prompt": prompt,
+                    "duration": "5",
+                    "aspect_ratio": ratio,
+                },
+            )
+        except Exception as e:
+            log.exception("FAL t2v failed: %s", e)
+            return None
+
+        return await self._download(result, out_path)
+
+    async def _download(self, result: dict, out_path: Path) -> Optional[Path]:
+        try:
+            import httpx  # type: ignore
+        except ImportError:
+            log.warning("httpx not installed")
             return None
 
         video_url = (result or {}).get("video", {}).get("url")
@@ -74,13 +115,13 @@ class FalClient:
             return None
 
         try:
-            async with httpx.AsyncClient(timeout=120) as client:
+            async with httpx.AsyncClient(timeout=180) as client:
                 r = await client.get(video_url)
                 r.raise_for_status()
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 out_path.write_bytes(r.content)
-                log.info("FAL wrote video to %s", out_path)
+                log.info("FAL wrote clip → %s", out_path)
                 return out_path
         except Exception as e:
-            log.exception("FAL video download failed: %s", e)
+            log.exception("FAL download failed: %s", e)
             return None
