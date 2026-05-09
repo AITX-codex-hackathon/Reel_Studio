@@ -8,11 +8,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { TemplateCard } from "@/components/template-card";
-import { api, type Template } from "@/lib/api";
+import { StyleCard } from "@/components/style-card";
+import { api, type Template, type VideoStyle } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selected, setSelected] = useState<Template | null>(null);
+
+  const [styles, setStyles] = useState<VideoStyle[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [activeCategory, setActiveCategory] = useState<string>("All");
+  const [selectedStyle, setSelectedStyle] = useState<VideoStyle | null>(null);
 
   const [brief, setBrief] = useState("");
   const [name, setName] = useState("");
@@ -21,7 +28,14 @@ export default function TemplatesPage() {
 
   useEffect(() => {
     api.listTemplates().then(setTemplates);
+    api.listStyles().then(setStyles);
+    api.listStyleCategories().then((cats) => setCategories(["All", ...cats]));
   }, []);
+
+  const filteredStyles =
+    activeCategory === "All"
+      ? styles
+      : styles.filter((s) => s.category === activeCategory);
 
   const onTranslate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,15 +56,15 @@ export default function TemplatesPage() {
   };
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-12">
       <div>
         <h1 className="font-display text-3xl font-bold">Templates</h1>
         <p className="text-ink-muted mt-1">
-          Reusable storyboards. Pick one when starting a project, or author your own from a brief.
+          Reusable storyboards and cinematic shot styles. Pick one to start a project.
         </p>
       </div>
 
-      {/* Bundled templates */}
+      {/* ── Bundled storyboard templates ── */}
       <section>
         <h2 className="font-display text-xl font-semibold mb-4">Bundled</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -59,13 +73,57 @@ export default function TemplatesPage() {
               key={t.template_id}
               template={t}
               selected={selected?.template_id === t.template_id}
-              onSelect={() => setSelected(t)}
+              onSelect={() => { setSelected(t); setSelectedStyle(null); }}
             />
           ))}
         </div>
       </section>
 
-      {/* Author from prompt */}
+      {/* ── Style Library ── */}
+      <section>
+        <div className="flex items-end justify-between mb-4 flex-wrap gap-2">
+          <div>
+            <h2 className="font-display text-xl font-semibold">Style Library</h2>
+            <p className="text-sm text-ink-muted mt-0.5">
+              {styles.length} cinematic shot styles — choose one to drive i2v generation.
+            </p>
+          </div>
+          <Badge variant="muted">{filteredStyles.length} shown</Badge>
+        </div>
+
+        {/* Category filter chips */}
+        <div className="flex flex-wrap gap-2 mb-5">
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setActiveCategory(cat)}
+              className={cn(
+                "px-3 py-1 rounded-full text-xs font-medium border transition-colors",
+                activeCategory === cat
+                  ? "bg-primary text-white border-primary shadow-brand-soft"
+                  : "bg-white text-ink-muted border-border/60 hover:border-primary/40 hover:text-primary",
+              )}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {/* Style cards grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {filteredStyles.map((s) => (
+            <StyleCard
+              key={s.style_id}
+              style={s}
+              selected={selectedStyle?.style_id === s.style_id}
+              onSelect={() => { setSelectedStyle(s); setSelected(null); }}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* ── Author from prompt ── */}
       <section>
         <Card>
           <CardHeader>
@@ -74,7 +132,7 @@ export default function TemplatesPage() {
               <CardTitle>Create a template from a brief</CardTitle>
             </div>
             <CardDescription>
-              Describe the reel in plain English. Claude turns it into a structured YAML template
+              Describe the reel in plain English. The AI turns it into a structured YAML template
               you can reuse across projects.
             </CardDescription>
           </CardHeader>
@@ -131,7 +189,7 @@ export default function TemplatesPage() {
         </Card>
       </section>
 
-      {/* Inspector */}
+      {/* ── Template inspector ── */}
       {selected && (
         <section>
           <Card>
@@ -141,7 +199,7 @@ export default function TemplatesPage() {
                   <CardTitle>{selected.name}</CardTitle>
                   <CardDescription>{selected.description}</CardDescription>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Badge variant="default">{selected.aspect_ratio}</Badge>
                   <Badge variant="muted">{selected.target_duration_sec}s</Badge>
                   <Badge variant="muted">{selected.shot_slots.length} shots</Badge>
@@ -180,6 +238,33 @@ export default function TemplatesPage() {
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
+      {/* ── Style inspector ── */}
+      {selectedStyle && (
+        <section>
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <CardTitle>{selectedStyle.camera_motion}</CardTitle>
+                  <CardDescription>
+                    {selectedStyle.style_id} · {selectedStyle.category} · {selectedStyle.mood}
+                  </CardDescription>
+                </div>
+                <Badge variant="accent">{selectedStyle.environmental_dynamics}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <h3 className="text-sm font-semibold text-ink-muted mb-2 uppercase tracking-wider">
+                Video prompt
+              </h3>
+              <p className="text-sm text-ink leading-relaxed bg-surface-alt rounded-xl p-4 border border-border/40">
+                {selectedStyle.video_prompt}
+              </p>
             </CardContent>
           </Card>
         </section>
