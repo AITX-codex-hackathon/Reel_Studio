@@ -18,6 +18,7 @@ from realstate.api import (  # noqa: E402
     projects,
     render,
     storyboards,
+    styles,
     templates,
     uploads,
     ws,
@@ -77,6 +78,7 @@ def health() -> dict:
 app.include_router(projects.router)
 app.include_router(uploads.router)
 app.include_router(templates.router)
+app.include_router(styles.router)
 app.include_router(storyboards.router)
 app.include_router(render.router)
 app.include_router(audio.router)
