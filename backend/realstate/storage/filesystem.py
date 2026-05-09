@@ -18,6 +18,7 @@ class ProjectFiles:
 
       uploads/         original user images
       generated/       Nano Banana outputs
+      music/           selected tracks, beat grids, and attribution manifests
       renders/         draft.mp4, final.mp4
       scratch/         intermediate files (audio cuts etc.)
       storyboard.json  most recent storyboard (also in DB)
@@ -39,6 +40,11 @@ class ProjectFiles:
 
     def generated_dir(self, project_id: str) -> Path:
         d = self.project_dir(project_id) / "generated"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def music_dir(self, project_id: str) -> Path:
+        d = self.project_dir(project_id) / "music"
         d.mkdir(parents=True, exist_ok=True)
         return d
 

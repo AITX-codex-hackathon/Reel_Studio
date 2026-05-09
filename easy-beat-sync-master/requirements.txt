@@ -1,0 +1,13 @@
+# Core dependencies for EasyBeatSync.py.
+#
+# Install with:
+#   python -m pip install -r requirements.txt
+#
+# The old GUI file picker dependencies are intentionally not listed here because
+# they pull in pyobjc/Qt packages that are fragile on macOS + Python 3.9. Run the
+# main script with a folder path instead:
+#   python EasyBeatSync.py /path/to/project-folder
+natsort
+pyyaml
+librosa
+soundfile

@@ -1,7 +1,6 @@
 """Storyboard generation + retrieval."""
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -13,9 +12,11 @@ from sqlalchemy.orm import Session
 
 from ..agents.image_analyzer import ImageAnalysisResult
 from ..models.project import Project
-from ..models.storyboard import Storyboard
+from ..integrations.free_music import FreeMusicError, load_timestamps
+from ..models.storyboard import Storyboard, StoryboardMusic
+from ..models.template import AudioCue
 from ..services import StoryboardBuilder
-from ..storage import AnalysisRow, ProjectRow, StoryboardRow, UploadRow, get_db
+from ..storage import AnalysisRow, ProjectMusicRow, ProjectRow, StoryboardRow, UploadRow, get_db
 from ..storage.filesystem import TemplateLoader
 
 router = APIRouter(prefix="/projects/{project_id}/storyboard", tags=["storyboards"])
@@ -65,12 +66,31 @@ async def generate_storyboard(
         uploads.append((u.id, Path(u.path), cached))
 
     builder = StoryboardBuilder()
+    music, beat_timestamps_ms = _selected_music(project_id, db)
     storyboard = await builder.build(
         project=Project.model_validate(project_row),
         template=template,
         uploads=uploads,
-        audio_path_for_pacing=None,  # v1: pacing analyzed against shot music after we know it
+        audio_path_for_pacing=Path(music.audio_path) if music else None,
+        beat_timestamps_ms=beat_timestamps_ms,
+        music=music,
     )
+    if music:
+        storyboard.audio_cues = [
+            AudioCue(
+                track_query=f"file:{music.audio_path}",
+                kind="music",
+                start_time_sec=0.0,
+                end_time_sec=storyboard.total_duration_sec,
+                volume_db=-2.0,
+                fade_in_sec=0.6,
+                fade_out_sec=1.6,
+            )
+        ]
+        storyboard.notes = (
+            f"{storyboard.notes} Beat-synced to {music.artist} - {music.title} "
+            f"using {len(beat_timestamps_ms)} stored beat timestamps."
+        ).strip()
 
     # Persist any newly computed analyses
     for upload_id, _, _ in uploads:
@@ -96,6 +116,43 @@ async def generate_storyboard(
     db.commit()
 
     return storyboard
+
+
+def _selected_music(project_id: str, db: Session) -> tuple[Optional[StoryboardMusic], list[int]]:
+    row = (
+        db.query(ProjectMusicRow)
+        .filter_by(project_id=project_id)
+        .order_by(ProjectMusicRow.created_at.desc())
+        .first()
+    )
+    if not row:
+        return None, []
+
+    beat_timestamps: list[int] = []
+    timestamps_path = Path(row.timestamps_path)
+    if timestamps_path.exists():
+        try:
+            beat_timestamps = load_timestamps(timestamps_path)
+        except FreeMusicError:
+            beat_timestamps = []
+
+    return (
+        StoryboardMusic(
+            source=row.source,
+            track_id=row.track_id,
+            title=row.title,
+            artist=row.artist,
+            audio_path=row.audio_path,
+            timestamps_path=row.timestamps_path,
+            manifest_path=row.manifest_path,
+            cuts_dir=row.cuts_dir,
+            tempo=row.tempo,
+            beat_count=row.beat_count,
+            beat_timestamps_ms=beat_timestamps,
+            attribution=row.attribution,
+        ),
+        beat_timestamps,
+    )
 
 
 @router.get("", response_model=Optional[Storyboard])

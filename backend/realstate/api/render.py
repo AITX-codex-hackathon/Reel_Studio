@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -38,6 +38,8 @@ async def start_render(
         raise HTTPException(404, "Project not found")
     if not project.storyboard_id:
         raise HTTPException(400, "No storyboard yet. Generate one first.")
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        raise HTTPException(500, "FFmpeg and ffprobe must be available on PATH before rendering.")
 
     sb_row = db.get(StoryboardRow, project.storyboard_id)
     if not sb_row:

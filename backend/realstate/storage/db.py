@@ -87,6 +87,28 @@ class StoryboardRow(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class ProjectMusicRow(Base):
+    __tablename__ = "project_music"
+
+    id = Column(String, primary_key=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=False, index=True)
+    source = Column(String, nullable=False, default="free-to-use")
+    track_id = Column(String, nullable=False, index=True)
+    title = Column(String, nullable=False)
+    artist = Column(String, nullable=False)
+    duration_sec = Column(Float, nullable=True)
+    audio_path = Column(String, nullable=False)
+    metadata_path = Column(String, nullable=False)
+    timestamps_path = Column(String, nullable=False)
+    cuts_dir = Column(String, nullable=True)
+    manifest_path = Column(String, nullable=False)
+    tempo = Column(Float, nullable=True)
+    beat_count = Column(Integer, nullable=False, default=0)
+    attribution = Column(Text, nullable=False)
+    raw = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class RenderRow(Base):
     __tablename__ = "renders"
 

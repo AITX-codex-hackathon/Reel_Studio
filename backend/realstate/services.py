@@ -13,10 +13,9 @@ from jinja2 import Environment, StrictUndefined, UndefinedError
 
 from .agents.image_analyzer import ImageAnalyzer, ImageAnalysisResult
 from .agents.shot_matcher import AnalyzedUpload, ShotMatcher
-from .integrations.nano_banana import NanoBananaClient
+from .integrations.fal_image import FalImageClient
 from .models.project import Project
-from .models.shot import MotionPreset, TransitionType
-from .models.storyboard import ResolvedShot, Storyboard
+from .models.storyboard import ResolvedShot, Storyboard, StoryboardMusic
 from .models.template import Template
 from .schedulers.pacing import PacingScheduler
 from .storage.filesystem import ProjectFiles
@@ -32,13 +31,13 @@ class StoryboardBuilder:
         analyzer: Optional[ImageAnalyzer] = None,
         matcher: Optional[ShotMatcher] = None,
         scheduler: Optional[PacingScheduler] = None,
-        nano_banana: Optional[NanoBananaClient] = None,
+        image_generator: Optional[FalImageClient] = None,
         project_files: Optional[ProjectFiles] = None,
     ):
         self.analyzer = analyzer or ImageAnalyzer()
         self.matcher = matcher or ShotMatcher()
         self.scheduler = scheduler or PacingScheduler()
-        self.nano_banana = nano_banana or NanoBananaClient()
+        self.image_generator = image_generator or FalImageClient()
         self.project_files = project_files or ProjectFiles()
         self.jinja = Environment(undefined=StrictUndefined)
 
@@ -48,6 +47,8 @@ class StoryboardBuilder:
         template: Template,
         uploads: list[tuple[str, Path, Optional[ImageAnalysisResult]]],
         audio_path_for_pacing: Optional[Path] = None,
+        beat_timestamps_ms: Optional[list[int]] = None,
+        music: Optional[StoryboardMusic] = None,
     ) -> Storyboard:
         """Args:
             project: the property
@@ -64,18 +65,31 @@ class StoryboardBuilder:
             analyzed.append(AnalyzedUpload(upload_id=upload_id, image_path=str(path), analysis=cached))
 
         # 2. Match images to slots
-        match = self.matcher.match(template, analyzed)
+        music_context = (
+            f"{music.artist} - {music.title}, tempo {music.tempo or 'unknown'} BPM, "
+            f"{music.beat_count} detected beats"
+            if music
+            else None
+        )
+        match = await self.matcher.match(template, analyzed, music_context=music_context)
 
         # 3. Generate fallback images for slots that need them
         upload_by_id = {u.upload_id: u for u in analyzed}
+        reference_images = [Path(upload.image_path) for upload in analyzed[:3]]
         generated_paths: dict[str, Path] = {}
         for slot_id in match.needs_generation:
             slot = template.slot_by_id[slot_id]
-            prompt = slot.generation_prompt or slot.description
+            override = match.style_overrides.get(slot_id, {})
+            prompt = _fallback_generation_prompt(
+                project=project,
+                slot_description=slot.generation_prompt or slot.description,
+                style_notes=str(override.get("style_notes") or ""),
+            )
             out_path = self.project_files.generated_dir(project.id) / f"{slot_id}.jpg"
-            generated = await self.nano_banana.generate(
+            generated = await self.image_generator.generate(
                 prompt=prompt,
                 out_path=out_path,
+                reference_images=reference_images or None,
                 aspect_ratio=template.aspect_ratio,
             )
             if generated:
@@ -91,7 +105,11 @@ class StoryboardBuilder:
                 final_unfilled.append(slot_id)
 
         # 4. Pacing — compute timings (using audio if provided)
-        timings = self.scheduler.schedule(template, str(audio_path_for_pacing) if audio_path_for_pacing else None)
+        timings = self.scheduler.schedule(
+            template,
+            str(audio_path_for_pacing) if audio_path_for_pacing else None,
+            beat_timestamps_ms=beat_timestamps_ms,
+        )
         timing_by_slot = {t.slot_id: t for t in timings}
 
         # 5. Build ResolvedShot list
@@ -107,7 +125,12 @@ class StoryboardBuilder:
         text_overlay_by_id = template.text_overlay_by_id
 
         shots: list[ResolvedShot] = []
-        for slot in template.shot_slots:
+        ordered_slots = [template.slot_by_id[slot_id] for slot_id in match.slot_order if slot_id in template.slot_by_id]
+        if not ordered_slots:
+            ordered_slots = template.shot_slots
+
+        timeline_t = 0.0
+        for slot in ordered_slots:
             assigned_id = match.assignments.get(slot.slot_id)
             image_path: Optional[str] = None
             is_generated = False
@@ -133,22 +156,25 @@ class StoryboardBuilder:
                     rendered_text = None
 
             timing = timing_by_slot.get(slot.slot_id)
+            override = match.style_overrides.get(slot.slot_id, {})
+            duration_sec = timing.duration_sec if timing else slot.duration_sec
             shots.append(
                 ResolvedShot(
                     slot_id=slot.slot_id,
                     image_path=image_path,
-                    start_time_sec=timing.start_time_sec if timing else 0.0,
-                    duration_sec=timing.duration_sec if timing else slot.duration_sec,
-                    motion=slot.motion,
-                    motion_strength=slot.motion_strength,
-                    transition_in=slot.transition_in,
-                    color_grade=slot.color_grade,
+                    start_time_sec=timeline_t,
+                    duration_sec=duration_sec,
+                    motion=override.get("motion", slot.motion),
+                    motion_strength=override.get("motion_strength", slot.motion_strength),
+                    transition_in=override.get("transition_in", slot.transition_in),
+                    color_grade=override.get("color_grade", slot.color_grade),
                     text_overlay_id=slot.text_overlay_id,
                     rendered_text_overlay=rendered_text,
                     is_generated=is_generated,
                     source_upload_id=source_upload_id,
                 )
             )
+            timeline_t += duration_sec
 
         # Recompute total duration from actual shots
         if shots:
@@ -163,9 +189,28 @@ class StoryboardBuilder:
             shots=shots,
             audio_cues=template.audio_cues,
             text_overlays=template.text_overlays,
+            music=music,
             total_duration_sec=total,
             aspect_ratio=template.aspect_ratio,
             generated_slot_ids=list(generated_paths.keys()),
             unfilled_slot_ids=final_unfilled,
             notes=match.notes,
         )
+
+
+def _fallback_generation_prompt(project: Project, slot_description: str, style_notes: str = "") -> str:
+    property_bits = [
+        project.name,
+        project.address,
+        project.description,
+    ]
+    property_context = ". ".join(bit for bit in property_bits if bit)
+    context_line = f"Property context: {property_context}." if property_context else ""
+    style_line = f"Editor camera/style notes: {style_notes}." if style_notes else ""
+    return (
+        "Generate a realistic high-end real-estate listing image for a vertical cinematic reel. "
+        "Use the uploaded reference photos as visual anchors for architecture, materials, lighting, "
+        "and property identity when provided. Do not add text, logos, watermarks, distorted rooms, "
+        "or impossible architecture. Keep it polished, commercial, dramatic, and soothing. "
+        f"Needed shot: {slot_description}. {context_line} {style_line}"
+    ).strip()

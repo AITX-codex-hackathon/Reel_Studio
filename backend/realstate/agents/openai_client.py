@@ -29,7 +29,7 @@ class OpenAIClient:
     ):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o")
-        self.vision_model = vision_model or os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini")
+        self.vision_model = vision_model or os.getenv("VLM_MODEL") or os.getenv("OPENAI_VISION_MODEL", "gpt-4o")
         self._client = None
 
     @property

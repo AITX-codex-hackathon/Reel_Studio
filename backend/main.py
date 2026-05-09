@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from realstate.api import (  # noqa: E402
     audio,
     files,
+    free_music,
     projects,
     render,
     storyboards,
@@ -78,5 +79,6 @@ app.include_router(templates.router)
 app.include_router(storyboards.router)
 app.include_router(render.router)
 app.include_router(audio.router)
+app.include_router(free_music.router)
 app.include_router(files.router)
 app.include_router(ws.router)

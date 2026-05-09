@@ -25,13 +25,16 @@ class Settings(BaseModel):
     ]
 
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    fal_key: str = os.getenv("FAL_KEY", "")
+    fal_key: str = _first_env("FAL_KEY", "FAL_API_KEY")
     gemini_api_key: str = _first_env("GEMINI_API_KEY", "GOOGLE_API_KEY")
     runway_api_key: str = os.getenv("RUNWAY_API_KEY", "")
     elevenlabs_api_key: str = os.getenv("ELEVENLABS_API_KEY", "")
 
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o")
-    openai_vision_model: str = os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini")
+    openai_vision_model: str = _first_env("VLM_MODEL", "OPENAI_VISION_MODEL", default="gpt-4o")
+    i2v_provider: str = os.getenv("I2V_PROVIDER", "stub")
+    fal_image_model: str = os.getenv("FAL_IMAGE_MODEL", "fal-ai/flux/dev")
+    fal_image_edit_model: str = os.getenv("FAL_IMAGE_EDIT_MODEL", "fal-ai/flux-pro/kontext")
     gemini_image_model: str = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3-pro-image-preview")
 
     font_path: str | None = os.getenv("FONT_PATH")  # for drawtext
