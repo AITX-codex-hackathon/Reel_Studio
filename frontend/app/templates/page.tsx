@@ -74,7 +74,7 @@ export default function TemplatesPage() {
               <CardTitle>Create a template from a brief</CardTitle>
             </div>
             <CardDescription>
-              Describe the reel in plain English. Claude turns it into a structured YAML template
+              Describe the reel in plain English. OpenAI turns it into a structured YAML template
               you can reuse across projects.
             </CardDescription>
           </CardHeader>

@@ -13,13 +13,14 @@ class Settings(BaseModel):
     audio_library_root: str = os.getenv("AUDIO_LIBRARY_ROOT", "./audio_library")
     cors_origins: list[str] = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")]
 
-    anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    fal_key: str = os.getenv("FAL_KEY", "")
     google_api_key: str = os.getenv("GOOGLE_API_KEY", "")
     runway_api_key: str = os.getenv("RUNWAY_API_KEY", "")
     elevenlabs_api_key: str = os.getenv("ELEVENLABS_API_KEY", "")
 
-    claude_model: str = os.getenv("CLAUDE_MODEL", "claude-opus-4-7")
-    claude_vision_model: str = os.getenv("CLAUDE_VISION_MODEL", "claude-sonnet-4-6")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o")
+    openai_vision_model: str = os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini")
     gemini_image_model: str = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 
     font_path: str | None = os.getenv("FONT_PATH")  # for drawtext

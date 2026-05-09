@@ -20,7 +20,7 @@ An AI-powered platform that takes 50–150 property photos and produces a ~1-min
         │                  │                    │
         ▼                  ▼                    ▼
   ┌──────────────────────────────────────────────────┐
-  │        AI AGENT LAYER (Claude + Gemini)          │
+  │        AI AGENT LAYER (OpenAI + fal/Gemini)      │
   │  ┌─────────────┐  ┌──────────────┐  ┌────────┐   │
   │  │ Image       │→ │ Shot Matcher │→ │ Prompt │   │
   │  │ Analyzer    │  │ (assign      │  │ Trans- │   │
@@ -87,9 +87,10 @@ npm run dev   # http://localhost:3000
 
 ### Optional API keys (in `.env`)
 
-- `ANTHROPIC_API_KEY` — Claude for agent reasoning + image analysis
-- `GOOGLE_API_KEY` — Nano Banana (Gemini 2.5 Flash Image) for missing shots
-- `RUNWAY_API_KEY` — generative motion for hero shots
+- `OPENAI_API_KEY` — OpenAI for agent reasoning + image analysis (`gpt-4o` / `gpt-4o-mini`)
+- `FAL_KEY` — fal.ai for image gen (FLUX Kontext) + image-to-video (Kling/Luma)
+- `GOOGLE_API_KEY` — Nano Banana (Gemini 2.5 Flash Image) — alternative to fal for image gen
+- `RUNWAY_API_KEY` — direct Runway access (covered by fal too)
 - `ELEVENLABS_API_KEY` — TTS voiceover + music generation
 
 Without keys, the system runs in **offline mode**: deterministic rule-based shot matching, Ken Burns only, audio from the local library.
@@ -103,7 +104,7 @@ Templates live in `backend/realstate/templates/*.yaml` — see `docs/template-au
 - `cinematic-walkthrough.yaml` — 75s, narrative arc with text overlays
 - `airbnb-spotlight.yaml` — lifestyle-focused, 45s, vibey
 
-A pro editor can write a template either by hand or by giving Claude a natural-language brief like:
+A pro editor can write a template either by hand or by giving OpenAI a natural-language brief like:
 
 > "Open with a 4-second slow zoom on the exterior. Cut to the foyer at 4s with a push-in. Music starts at 4s. Show kitchen highlights between 8–16s. End on a sunset shot of the backyard."
 
@@ -119,7 +120,7 @@ realstate/
 │   │   ├── api/              # REST + WebSocket routes
 │   │   ├── models/           # Pydantic models (Shot, Storyboard, Template)
 │   │   ├── pipelines/        # ReelPipeline, MultiScalePipeline (draft+final)
-│   │   ├── agents/           # Claude/Gemini-powered agents
+│   │   ├── agents/           # OpenAI/fal/Gemini-powered agents
 │   │   ├── effects/          # Ken Burns, transitions, color grade, overlays
 │   │   ├── schedulers/       # Beat-aware shot pacing
 │   │   ├── integrations/     # Nano Banana, Runway, ElevenLabs adapters

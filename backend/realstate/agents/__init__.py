@@ -1,11 +1,11 @@
-from .claude_client import ClaudeClient, ClaudeUnavailable
+from .openai_client import OpenAIClient, OpenAIUnavailable
 from .image_analyzer import ImageAnalyzer, ImageAnalysisResult
 from .shot_matcher import ShotMatcher, MatchResult
 from .prompt_translator import PromptTranslator
 
 __all__ = [
-    "ClaudeClient",
-    "ClaudeUnavailable",
+    "OpenAIClient",
+    "OpenAIUnavailable",
     "ImageAnalyzer",
     "ImageAnalysisResult",
     "ShotMatcher",

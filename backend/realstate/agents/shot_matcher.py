@@ -3,8 +3,8 @@
 Two strategies, in order:
   1. Greedy heuristic: score each (slot, image) pair, then assign top scores
      under a constraint that no image is used more than `max_reuse` times.
-  2. (Optional) Claude refinement: send the slot list + scored shortlist to
-     Claude for a final assignment that considers narrative flow.
+  2. (Optional) LLM refinement: send the slot list + scored shortlist to
+     the LLM for a final assignment that considers narrative flow.
 
 Output: MatchResult with assignments + a list of slot_ids that need generation.
 """
@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .claude_client import ClaudeClient
+from .openai_client import OpenAIClient
 from .image_analyzer import ImageAnalysisResult
 from ..models.shot import ShotSlot
 from ..models.template import Template
@@ -41,8 +41,8 @@ class MatchResult:
 
 
 class ShotMatcher:
-    def __init__(self, claude: Optional[ClaudeClient] = None, max_reuse: int = 1):
-        self.claude = claude
+    def __init__(self, llm: Optional[OpenAIClient] = None, max_reuse: int = 1):
+        self.llm = llm
         self.max_reuse = max_reuse
 
     def match(self, template: Template, uploads: list[AnalyzedUpload]) -> MatchResult:

@@ -6,7 +6,7 @@ Example brief:
     kitchen highlights between 8 and 16s. End on a sunset shot of the backyard
     with the price overlaid."
 
-We round-trip through Claude with a strict JSON schema, then validate against
+We round-trip through the LLM with a strict JSON schema, then validate against
 the Template Pydantic model. If validation fails, we retry once with the error
 fed back as a correction.
 """
@@ -20,7 +20,7 @@ from typing import Optional
 import yaml
 from pydantic import ValidationError
 
-from .claude_client import ClaudeClient, ClaudeUnavailable
+from .openai_client import OpenAIClient, OpenAIUnavailable
 from ..models.template import Template
 
 log = logging.getLogger(__name__)
@@ -104,14 +104,14 @@ Property name (use as the template name if appropriate): {name}
 
 
 class PromptTranslator:
-    def __init__(self, claude: Optional[ClaudeClient] = None):
-        self.claude = claude or ClaudeClient()
+    def __init__(self, llm: Optional[OpenAIClient] = None):
+        self.llm = llm or OpenAIClient()
 
     async def translate(self, brief: str, name: Optional[str] = None) -> Template:
-        if not self.claude.enabled:
-            raise ClaudeUnavailable("Cannot translate prompts without ANTHROPIC_API_KEY")
+        if not self.llm.enabled:
+            raise OpenAIUnavailable("Cannot translate prompts without OPENAI_API_KEY")
 
-        text = await self.claude.message(
+        text = await self.llm.message(
             system=_SYSTEM,
             user=_USER.format(brief=brief, name=name or "Custom Template"),
             max_tokens=3500,
@@ -123,7 +123,7 @@ class PromptTranslator:
         except ValidationError as ve:
             # One retry with the error attached
             log.info("Retrying translate with validation feedback")
-            corrected = await self.claude.message(
+            corrected = await self.llm.message(
                 system=_SYSTEM,
                 user=_USER.format(brief=brief, name=name or "Custom Template")
                 + f"\n\nYour previous response failed validation:\n{ve}\n\nFix it and respond with the corrected JSON.",

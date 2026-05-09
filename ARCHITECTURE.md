@@ -16,7 +16,7 @@ A reel is a **storyboard**: an ordered list of **shots**, each anchored to a tim
 | `LTXMultiScalePipeline` (low-res preview → high-res refine) | `MultiPassRenderer` (draft preview → final 1080p/4K) | [`backend/realstate/pipelines/multiscale_pipeline.py`](backend/realstate/pipelines/multiscale_pipeline.py) |
 | `RectifiedFlowScheduler` (timestep schedule) | `PacingScheduler` (beat-aware shot timing) | [`backend/realstate/schedulers/pacing.py`](backend/realstate/schedulers/pacing.py) |
 | `SymmetricPatchifier` (latents → patches + coords) | `Storyboard` (template + images → resolved shot list with timing coords) | [`backend/realstate/models/storyboard.py`](backend/realstate/models/storyboard.py) |
-| Prompt enhancement chain (Florence-2 caption → Llama-3.2 refine) | Image analysis (Claude vision) → shot matcher → fallback to Nano Banana | [`backend/realstate/agents/`](backend/realstate/agents/) |
+| Prompt enhancement chain (Florence-2 caption → Llama-3.2 refine) | Image analysis (OpenAI vision) → shot matcher → fallback to Nano Banana / fal | [`backend/realstate/agents/`](backend/realstate/agents/) |
 | `SkipLayerStrategy` (skip transformer blocks per timestep) | `EffectSkipStrategy` (skip color-grade on already-graded shots, skip Ken Burns on gen-motion shots) | [`backend/realstate/effects/`](backend/realstate/effects/) |
 | `ASPECT_RATIO_*_BIN` resolution snapping | Output aspect-ratio presets (9:16 reel, 1:1 grid, 16:9 web) | [`backend/realstate/render/encoder.py`](backend/realstate/render/encoder.py) |
 | `InferenceConfig` dataclass | `RenderConfig` Pydantic model | [`backend/realstate/models/render_config.py`](backend/realstate/models/render_config.py) |
@@ -27,9 +27,9 @@ A reel is a **storyboard**: an ordered list of **shots**, each anchored to a tim
 Pure data classes. No I/O, no logic. `Shot`, `Storyboard`, `Template`, `RenderConfig`, `Project`. Mirrors the dataclass discipline of LTX-Video's `InferenceConfig` and `ConditioningItem`.
 
 ### Layer 2 — Agents (AI orchestration)
-- **`ImageAnalyzer`** — Claude vision call. Tags each upload with: room type, quality score (0-1), framing notes, lighting, dominant colors, suggested camera move. Cached per image hash.
-- **`ShotMatcher`** — Given a template's shot slots and analyzed images, assigns each slot the best image. Falls back to Nano Banana when no upload satisfies a slot's requirements (e.g. "sunset exterior" but only daytime photos uploaded).
-- **`PromptTranslator`** — Converts a pro editor's natural-language brief ("4-second zoom on exterior, cut to foyer at 4s, music starts then…") into a valid template YAML. Uses Claude with structured output validated against the `Template` schema.
+- **`ImageAnalyzer`** — OpenAI vision call (`gpt-4o-mini` by default). Tags each upload with: room type, quality score (0-1), framing notes, lighting, dominant colors, suggested camera move. Cached per image hash.
+- **`ShotMatcher`** — Given a template's shot slots and analyzed images, assigns each slot the best image. Falls back to Nano Banana / fal when no upload satisfies a slot's requirements (e.g. "sunset exterior" but only daytime photos uploaded).
+- **`PromptTranslator`** — Converts a pro editor's natural-language brief ("4-second zoom on exterior, cut to foyer at 4s, music starts then…") into a valid template YAML. Uses OpenAI (`gpt-4o` by default) with structured output validated against the `Template` schema.
 
 ### Layer 3 — Pipelines
 - **`ReelPipeline`** — single-pass render: storyboard → effects → FFmpeg → MP4.
@@ -114,7 +114,7 @@ All integrations degrade gracefully: missing API key → adapter returns `None` 
 
 **Pacing as a scheduler.** LTX-Video shifts denoising timesteps based on resolution; we shift shot boundaries based on tempo. The pattern — "let a domain-specific scheduler decide *when* things happen" — is the same.
 
-**Agent fallback chain.** Mirrors LTX-Video's prompt enhancement (Florence-2 captions images → Llama-3.2 refines into a cinematic prompt). Ours is: Claude analyzes images → matcher selects → Nano Banana fills gaps. The chain is decoupled so each agent is swappable.
+**Agent fallback chain.** Mirrors LTX-Video's prompt enhancement (Florence-2 captions images → Llama-3.2 refines into a cinematic prompt). Ours is: OpenAI vision analyzes images → matcher selects → Nano Banana / fal fills gaps. The chain is decoupled so each agent is swappable.
 
 **Skip strategies.** LTX-Video skips transformer layers per timestep for speed. We skip effect passes per shot when redundant — e.g. if a shot is generative-motion (already moving), skip Ken Burns; if a shot's source is already color-graded, skip the LUT pass.
 

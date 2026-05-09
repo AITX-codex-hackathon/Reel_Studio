@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ..agents.claude_client import ClaudeUnavailable
+from ..agents.openai_client import OpenAIUnavailable
 from ..agents.prompt_translator import PromptTranslator
 from ..models.template import Template
 from ..storage.filesystem import TemplateLoader
@@ -40,8 +40,8 @@ async def from_prompt(body: FromPromptBody) -> Template:
     try:
         translator = PromptTranslator()
         template = await translator.translate(brief=body.brief, name=body.name)
-    except ClaudeUnavailable as e:
-        raise HTTPException(503, f"Prompt translation requires ANTHROPIC_API_KEY: {e}")
+    except OpenAIUnavailable as e:
+        raise HTTPException(503, f"Prompt translation requires OPENAI_API_KEY: {e}")
     except Exception as e:
         raise HTTPException(500, f"Translation failed: {e}")
 

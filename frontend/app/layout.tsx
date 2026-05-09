@@ -59,7 +59,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </header>
         <main className="mx-auto max-w-7xl px-6 py-10">{children}</main>
         <footer className="mx-auto max-w-7xl px-6 py-10 text-xs text-ink-subtle border-t border-border/40 mt-16">
-          Built with FFmpeg, Claude, Nano Banana · Lifted from LTX-Video patterns
+          Built with FFmpeg, OpenAI, Nano Banana · Lifted from LTX-Video patterns
         </footer>
       </body>
     </html>

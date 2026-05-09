@@ -1,6 +1,6 @@
-"""Thin wrapper around Anthropic SDK with graceful degradation.
+"""Thin wrapper around the OpenAI SDK with graceful degradation.
 
-If ANTHROPIC_API_KEY is not set, calls raise ClaudeUnavailable, and the agent
+If OPENAI_API_KEY is not set, calls raise OpenAIUnavailable, and the agent
 layer is expected to fall back to deterministic logic (heuristic shot matching,
 no prompt translation).
 """
@@ -11,25 +11,25 @@ import logging
 import mimetypes
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 log = logging.getLogger(__name__)
 
 
-class ClaudeUnavailable(RuntimeError):
+class OpenAIUnavailable(RuntimeError):
     pass
 
 
-class ClaudeClient:
+class OpenAIClient:
     def __init__(
         self,
         api_key: Optional[str] = None,
         model: Optional[str] = None,
         vision_model: Optional[str] = None,
     ):
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        self.model = model or os.getenv("CLAUDE_MODEL", "claude-opus-4-7")
-        self.vision_model = vision_model or os.getenv("CLAUDE_VISION_MODEL", "claude-sonnet-4-6")
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o")
+        self.vision_model = vision_model or os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini")
         self._client = None
 
     @property
@@ -38,13 +38,13 @@ class ClaudeClient:
 
     def _client_or_raise(self):
         if not self.enabled:
-            raise ClaudeUnavailable("ANTHROPIC_API_KEY is not set")
+            raise OpenAIUnavailable("OPENAI_API_KEY is not set")
         if self._client is None:
             try:
-                import anthropic  # type: ignore
+                from openai import AsyncOpenAI  # type: ignore
             except ImportError as e:
-                raise ClaudeUnavailable("anthropic SDK not installed: pip install anthropic") from e
-            self._client = anthropic.AsyncAnthropic(api_key=self.api_key)
+                raise OpenAIUnavailable("openai SDK not installed: pip install openai") from e
+            self._client = AsyncOpenAI(api_key=self.api_key)
         return self._client
 
     async def message(
@@ -55,14 +55,15 @@ class ClaudeClient:
         model: Optional[str] = None,
     ) -> str:
         client = self._client_or_raise()
-        resp = await client.messages.create(
+        resp = await client.chat.completions.create(
             model=model or self.model,
             max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user}],
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
         )
-        # Concatenate text blocks
-        return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        return resp.choices[0].message.content or ""
 
     async def vision(
         self,
@@ -71,7 +72,7 @@ class ClaudeClient:
         image_path: Path,
         max_tokens: int = 1024,
     ) -> str:
-        """Send a single image + text prompt to Claude and return text."""
+        """Send a single image + text prompt to the vision model and return text."""
         client = self._client_or_raise()
 
         mime, _ = mimetypes.guess_type(str(image_path))
@@ -81,21 +82,21 @@ class ClaudeClient:
         with open(image_path, "rb") as f:
             data = base64.standard_b64encode(f.read()).decode()
 
-        resp = await client.messages.create(
+        resp = await client.chat.completions.create(
             model=self.vision_model,
             max_tokens=max_tokens,
-            system=system,
             messages=[
+                {"role": "system", "content": system},
                 {
                     "role": "user",
                     "content": [
-                        {
-                            "type": "image",
-                            "source": {"type": "base64", "media_type": mime, "data": data},
-                        },
                         {"type": "text", "text": user_text},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime};base64,{data}"},
+                        },
                     ],
-                }
+                },
             ],
         )
-        return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        return resp.choices[0].message.content or ""
