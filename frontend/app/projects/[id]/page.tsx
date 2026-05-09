@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo, useRef, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { ArrowRight, Check, Loader2, Sparkles, Wand2 } from "lucide-react";
 import Link from "next/link";
 
@@ -11,8 +11,10 @@ import { RenderProgressCard } from "@/components/render-progress";
 import { StoryboardTimeline } from "@/components/storyboard-timeline";
 import { TemplateCard } from "@/components/template-card";
 import { UploadDropzone } from "@/components/upload-dropzone";
+import { MusicBrowser } from "@/components/music-browser";
 import {
   api,
+  type ProjectMusic,
   type Project,
   type RenderJob,
   type Storyboard,
@@ -22,7 +24,7 @@ import {
 import { connectProgressWS, type ProgressMessage } from "@/lib/ws";
 import { cn } from "@/lib/utils";
 
-type Step = "upload" | "template" | "storyboard" | "render";
+type Step = "upload" | "template" | "music" | "storyboard" | "render";
 
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = use(params);
@@ -31,6 +33,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [templates, setTemplates] = useState<Template[]>([]);
   const [storyboard, setStoryboard] = useState<Storyboard | null>(null);
   const [renders, setRenders] = useState<RenderJob[]>([]);
+  const [currentMusic, setCurrentMusic] = useState<ProjectMusic | null>(null);
   const [step, setStep] = useState<Step>("upload");
 
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -46,16 +49,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       api.listTemplates(),
       api.getStoryboard(projectId),
       api.listRenders(projectId),
-    ]).then(([p, u, t, s, r]) => {
+      api.getCurrentMusic(projectId),
+    ]).then(([p, u, t, s, r, m]) => {
       setProject(p);
       setUploads(u);
       setTemplates(t);
       if (s) setStoryboard(s);
       setRenders(r);
+      setCurrentMusic(m);
       setSelectedTemplate(p.template_id ?? null);
       // pick the most advanced step
       if (r.length) setStep("render");
       else if (s) setStep("storyboard");
+      else if (m) setStep("music");
       else if (p.template_id) setStep("template");
       else if (u.length) setStep("template");
     });
@@ -82,6 +88,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setStoryboard(sb);
       setStep("storyboard");
     } catch (e) {
+      const savedStoryboard = await api.getStoryboard(projectId).catch(() => null);
+      if (savedStoryboard) {
+        setStoryboard(savedStoryboard);
+        setStep("storyboard");
+        return;
+      }
       alert(`Failed to generate storyboard: ${e instanceof Error ? e.message : e}`);
     } finally {
       setGeneratingStoryboard(false);
@@ -105,8 +117,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       </div>
     );
   }
-
-  const stepIdx = (["upload", "template", "storyboard", "render"] as Step[]).indexOf(step);
 
   return (
     <div className="space-y-8">
@@ -132,7 +142,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       </div>
 
       {/* Stepper */}
-      <Stepper step={step} onSelect={setStep} stepIdx={stepIdx} hasUploads={uploads.length > 0} hasTemplate={!!selectedTemplate} hasStoryboard={!!storyboard} />
+      <Stepper
+        step={step}
+        onSelect={setStep}
+        hasUploads={uploads.length > 0}
+        hasTemplate={!!selectedTemplate}
+        hasMusic={!!currentMusic}
+        hasStoryboard={!!storyboard}
+      />
 
       {/* Step content */}
       {step === "upload" && (
@@ -191,8 +208,37 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               ← Back
             </Button>
             <Button
+              onClick={() => setStep("music")}
+              disabled={!selectedTemplate}
+            >
+              Choose music <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {step === "music" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Choose music</CardTitle>
+            <CardDescription>
+              Search the Free To Use catalog. Insert prepares beat timestamps and audio cuts for the reel.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <MusicBrowser
+              projectId={projectId}
+              currentMusic={currentMusic}
+              onInserted={setCurrentMusic}
+            />
+          </CardContent>
+          <div className="flex justify-between gap-3 p-6 border-t border-border/40">
+            <Button variant="ghost" onClick={() => setStep("template")}>
+              ← Back
+            </Button>
+            <Button
               onClick={onGenerateStoryboard}
-              disabled={!selectedTemplate || generatingStoryboard}
+              disabled={!selectedTemplate || !currentMusic || generatingStoryboard}
             >
               {generatingStoryboard ? (
                 <>
@@ -286,21 +332,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 function Stepper({
   step,
   onSelect,
-  stepIdx,
   hasUploads,
   hasTemplate,
+  hasMusic,
   hasStoryboard,
 }: {
   step: Step;
   onSelect: (s: Step) => void;
-  stepIdx: number;
   hasUploads: boolean;
   hasTemplate: boolean;
+  hasMusic: boolean;
   hasStoryboard: boolean;
 }) {
   const items: { step: Step; label: string; done: boolean }[] = [
     { step: "upload", label: "Upload", done: hasUploads },
     { step: "template", label: "Template", done: hasTemplate },
+    { step: "music", label: "Music", done: hasMusic },
     { step: "storyboard", label: "Storyboard", done: hasStoryboard },
     { step: "render", label: "Render", done: false },
   ];
@@ -312,7 +359,8 @@ function Stepper({
           i === 0 ||
           (i === 1 && hasUploads) ||
           (i === 2 && hasTemplate) ||
-          (i === 3 && hasStoryboard);
+          (i === 3 && (hasStoryboard || (hasTemplate && hasMusic))) ||
+          (i === 4 && hasStoryboard);
         return (
           <button
             key={it.step}

@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from realstate.api import (  # noqa: E402
     audio,
     files,
+    free_music,
     projects,
     render,
     storyboards,
@@ -65,10 +66,9 @@ def health() -> dict:
         "vlm": f"{settings.vlm_provider}/{settings.vlm_model}",
         "providers": {
             "openai": bool(settings.openai_api_key),
-            "anthropic": bool(settings.anthropic_api_key),
-            "fal": bool(settings.fal_api_key),
+            "fal": bool(settings.fal_key),
+            "gemini_nano_banana": bool(settings.gemini_api_key),
             "runway": bool(settings.runway_api_key),
-            "google_nano_banana": bool(settings.google_api_key),
             "elevenlabs": bool(settings.elevenlabs_api_key),
         },
     }
@@ -82,5 +82,6 @@ app.include_router(styles.router)
 app.include_router(storyboards.router)
 app.include_router(render.router)
 app.include_router(audio.router)
+app.include_router(free_music.router)
 app.include_router(files.router)
 app.include_router(ws.router)

@@ -1,6 +1,7 @@
-// API client. All requests go through Next's `/api/*` rewrite to the FastAPI backend.
+// API client. Call FastAPI directly; long-running generation requests can outlive
+// the Next dev rewrite proxy and surface as false 500s while the backend keeps running.
 
-const BASE = "/api";
+const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -91,6 +92,7 @@ export type Storyboard = {
   shots: ResolvedShot[];
   audio_cues: Template["audio_cues"];
   text_overlays: Template["text_overlays"];
+  music?: ProjectMusic | null;
   total_duration_sec: number;
   aspect_ratio: string;
   generated_slot_ids: string[];
@@ -118,6 +120,46 @@ export type AudioTrack = {
   mood?: string;
   tempo?: string;
   tags: string[];
+};
+
+export type FreeMusicTrack = {
+  id: string;
+  title: string;
+  artist: string;
+  duration_sec?: number | null;
+  genre?: string | null;
+  tags: string[];
+  thumbnail_url?: string | null;
+  preview_url?: string | null;
+};
+
+export type ProjectMusic = {
+  id: string;
+  project_id: string;
+  source: string;
+  track_id: string;
+  title: string;
+  artist: string;
+  duration_sec?: number | null;
+  audio_path: string;
+  metadata_path: string;
+  timestamps_path: string;
+  cuts_dir?: string | null;
+  manifest_path: string;
+  tempo?: number | null;
+  beat_count: number;
+  beat_timestamps_ms: number[];
+  attribution: string;
+  created_at: string;
+};
+
+export type MusicInsertJob = {
+  job_id: string;
+  status: "queued" | "running" | "complete" | "failed";
+  progress: number;
+  message: string;
+  result?: ProjectMusic | null;
+  error?: string | null;
 };
 
 export type Health = {
@@ -206,4 +248,21 @@ export const api = {
     request<VideoStyle[]>(`/styles${category ? `?category=${encodeURIComponent(category)}` : ""}`),
   listStyleCategories: () => request<string[]>("/styles/categories"),
   getStyle: (styleId: string) => request<VideoStyle>(`/styles/${styleId}`),
+
+  // Free To Use music
+  listFreeMusicTracks: (query = "", limit = 20) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (query.trim()) params.set("query", query.trim());
+    return request<FreeMusicTrack[]>(`/free-music/tracks?${params.toString()}`);
+  },
+  getCurrentMusic: (projectId: string) =>
+    request<ProjectMusic | null>(`/projects/${projectId}/music/current`),
+  insertMusic: (projectId: string, trackId: string) =>
+    request<MusicInsertJob>(`/projects/${projectId}/music/insert`, {
+      method: "POST",
+      body: JSON.stringify({ track_id: trackId, make_cuts: true, include_tail: false }),
+    }),
+  getMusicInsertJob: (projectId: string, jobId: string) =>
+    request<MusicInsertJob>(`/projects/${projectId}/music/jobs/${jobId}`),
+  projectMusicFileUrl: (projectId: string) => `${BASE}/projects/${projectId}/music/file`,
 };

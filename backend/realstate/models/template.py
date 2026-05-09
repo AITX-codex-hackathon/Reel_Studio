@@ -24,7 +24,8 @@ class AudioCue(BaseModel):
     track_query: str = Field(
         ...,
         description="Either a path within audio_library/, a tag query like 'mood:cinematic tempo:slow', "
-                    "or a generation prompt prefixed with 'gen:' (e.g. 'gen:soft piano underscore')"
+                    "an absolute path prefixed with 'file:', or a generation prompt prefixed with 'gen:' "
+                    "(e.g. 'gen:soft piano underscore')"
     )
     kind: str = Field("music", description="music | voiceover | sfx")
     start_time_sec: float = Field(0.0, ge=0)

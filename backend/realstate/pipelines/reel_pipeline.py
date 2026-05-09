@@ -161,6 +161,12 @@ class ReelPipeline:
                         out_path=scratch_dir / f"music_{i}.mp3",
                         duration_sec=min(total_duration_sec, 60.0),
                     )
+            elif q.startswith("file:"):
+                candidate = Path(q[5:].strip()).expanduser()
+                if candidate.exists() and candidate.is_file():
+                    file_path = candidate
+                else:
+                    log.info("Cue %d file path missing — skipping: %s", i, candidate)
             else:
                 track = self.stock_audio.find(q, seed=seed)
                 if track:

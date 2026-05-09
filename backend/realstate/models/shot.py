@@ -49,10 +49,10 @@ class ShotSlot(BaseModel):
     text_overlay_id: Optional[str] = Field(None, description="Reference to a text overlay defined in the template")
     must_fill: bool = Field(True, description="If False and no upload matches, the slot is dropped (not generated)")
     fallback_to_generated: bool = Field(
-        True, description="If no upload matches and must_fill, generate via Nano Banana"
+        True, description="If no upload matches and must_fill, generate via fal.ai"
     )
     generation_prompt: Optional[str] = Field(
-        None, description="Prompt used by Nano Banana when fallback fires"
+        None, description="Prompt used by fal.ai when fallback fires"
     )
 
 

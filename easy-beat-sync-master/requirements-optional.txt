@@ -1,0 +1,8 @@
+# Optional dependencies for helper tools and GUI file pickers.
+# Only install this if you specifically need the no-argument file picker or
+# helper scripts that depend on these packages.
+numpy
+pygame
+Pillow
+pywebview[qt]
+pygobject

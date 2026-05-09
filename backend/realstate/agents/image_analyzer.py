@@ -9,7 +9,7 @@ For each upload, returns:
   - suggested_motion
   - notes
 
-When Claude is unavailable, falls back to deterministic heuristics based on
+When OpenAI is unavailable, falls back to deterministic heuristics based on
 filename and (if PIL is available) image dimensions / brightness.
 """
 from __future__ import annotations
@@ -21,8 +21,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
-from .claude_client import ClaudeClient, ClaudeUnavailable
-from .vlm_factory import get_vlm_client
+from .openai_client import OpenAIClient, OpenAIUnavailable
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +53,7 @@ class ImageAnalysisResult:
 _SYSTEM = (
     "You are a real estate video editor's assistant. You analyze listing photos to decide "
     "how each one should be used in a short cinematic reel. You answer ONLY with a single JSON "
-    "object — no prose, no markdown fences."
+    "object — no prose, no markdown fences, no code blocks."
 )
 
 _USER_TEMPLATE = """Analyze this real estate photo. Respond with EXACTLY this JSON shape:
@@ -76,20 +75,20 @@ visible photographer/reflection, time-stamped photos, low resolution.
 
 class ImageAnalyzer:
     def __init__(self, claude: Optional[ClaudeClient] = None):
-        self.claude = claude or get_vlm_client()
+        self.claude = claude or ClaudeClient()
 
     async def analyze(self, image_path: Path) -> ImageAnalysisResult:
-        if self.claude.enabled:
+        if self.llm.enabled:
             try:
-                return await self._analyze_with_claude(image_path)
-            except ClaudeUnavailable:
+                return await self._analyze_with_llm(image_path)
+            except OpenAIUnavailable:
                 pass
             except Exception as e:
                 log.warning("Vision analysis failed, falling back: %s", e)
         return self._heuristic(image_path)
 
-    async def _analyze_with_claude(self, image_path: Path) -> ImageAnalysisResult:
-        text = await self.claude.vision(
+    async def _analyze_with_llm(self, image_path: Path) -> ImageAnalysisResult:
+        text = await self.llm.vision(
             system=_SYSTEM,
             user_text=_USER_TEMPLATE.format(rooms=ROOM_TYPES, motions=MOTIONS),
             image_path=image_path,

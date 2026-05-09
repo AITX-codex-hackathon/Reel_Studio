@@ -10,7 +10,7 @@ This guide is for the pro video editor (the human who knows what makes a good re
 
 ### 1. Natural-language brief (recommended)
 
-Write a paragraph describing the reel. The `/templates` page in the UI sends it to Claude, which produces a valid YAML you can save and reuse.
+Write a paragraph describing the reel. The `/templates` page in the UI sends it to OpenAI, which produces a valid YAML you can save and reuse.
 
 > **Example brief**
 > "60-second cinematic reel for a luxury home. Open with a 4-second slow zoom on the exterior at golden hour with the address overlaid. Cut to a foyer push-in at 4s. Music starts at 4s, slow cinematic. Show kitchen wide → kitchen detail → living room (3s each) between 8 and 17s. Spend 10 seconds on bedrooms and bathrooms with slow zooms. Then 8 seconds on the backyard with a pan right. End on a twilight exterior pull-out with the price overlaid for 4 seconds, fading to black."
