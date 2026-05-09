@@ -5,6 +5,7 @@ import Script from "next/script";
 import { Sparkles } from "lucide-react";
 import { Providers } from "@/components/Providers";
 import { NewReelButton } from "@/components/auth/NewReelButton";
+import { UserNav } from "@/components/auth/UserNav";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -105,6 +106,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <NewReelButton isHeader>
                   New Reel
                 </NewReelButton>
+                <UserNav />
               </nav>
             </div>
           </header>
