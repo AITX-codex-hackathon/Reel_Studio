@@ -6,7 +6,7 @@ An AI-powered platform that takes 50–150 property photos and produces a ~1-min
 
 1. **Upload** 50–150 photos of a property.
 2. **Choose a template** authored by a pro video editor (e.g. *Luxury Listing*, *Quick Flip*, *Cinematic Walkthrough*).
-3. **AI agents** analyze each image (room type, quality, framing, lighting), match them to storyboard slots, and fill missing shots via Nano Banana (Gemini 2.5 Flash Image).
+3. **AI agents** analyze each image (room type, quality, framing, lighting), match them to storyboard slots, and fill missing shots via Nano Banana Pro.
 4. **Render** a beat-aware reel with Ken Burns motion, transitions, color grading, text overlays, and music.
 5. **Download** the final 1080p MP4.
 
@@ -89,7 +89,7 @@ npm run dev   # http://localhost:3000
 
 - `OPENAI_API_KEY` — OpenAI for agent reasoning + image analysis (`gpt-4o` / `gpt-4o-mini`)
 - `FAL_KEY` — fal.ai for image gen (FLUX Kontext) + image-to-video (Kling/Luma)
-- `GOOGLE_API_KEY` — Nano Banana (Gemini 2.5 Flash Image) — alternative to fal for image gen
+- `GEMINI_API_KEY` — Nano Banana Pro (`gemini-3-pro-image-preview`) for image gen; `GOOGLE_API_KEY` is also accepted
 - `RUNWAY_API_KEY` — direct Runway access (covered by fal too)
 - `ELEVENLABS_API_KEY` — TTS voiceover + music generation
 

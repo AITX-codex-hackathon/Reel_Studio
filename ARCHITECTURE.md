@@ -57,7 +57,7 @@ Pure functions that take a still image + parameters and produce an FFmpeg filter
 ### Layer 7 — Integrations (external APIs)
 Adapter pattern. Each integration implements a small interface so the pipeline doesn't care which provider is wired up.
 
-- `nano_banana.py` — Google Gemini 2.5 Flash Image (text-to-image, image edit, smart crop, virtual staging)
+- `nano_banana.py` — Google Gemini image generation, defaulting to Nano Banana Pro (`gemini-3-pro-image-preview`) for text-to-image, image edit, smart crop, virtual staging
 - `runway.py` — Runway Gen-3 / Gen-4 for hero-shot generative motion
 - `elevenlabs.py` — TTS voiceover + music
 - `stock_audio.py` — local royalty-free library scanner
