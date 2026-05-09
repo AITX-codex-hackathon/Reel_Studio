@@ -57,11 +57,7 @@ class ShotSlot(BaseModel):
 
 
 class Shot(BaseModel):
-    """A resolved shot — slot + assigned image + final timing.
-
-    Direct analog of LTX-Video's `ConditioningItem(media, frame_number, strength)`.
-    Here the "media" is an image path and "frame_number" becomes "start_time".
-    """
+    """A resolved shot — slot + assigned image + final timing."""
     slot_id: str
     image_path: str = Field(..., description="Absolute path to the still (uploaded or generated)")
     start_time_sec: float = Field(..., ge=0)
@@ -71,8 +67,15 @@ class Shot(BaseModel):
     transition_in: TransitionType
     color_grade: Optional[str] = None
     text_overlay_id: Optional[str] = None
-    is_generated: bool = Field(False, description="True if image came from Nano Banana")
+    is_generated: bool = Field(False, description="True if image came from FAL")
     source_upload_id: Optional[str] = None
+
+    # Style recipe fields — set during storyboard build
+    room_type: Optional[str] = None
+    style_recipe_id: Optional[str] = None
+
+    # Set during render — path to FAL-generated .mp4 clip
+    video_clip_path: Optional[str] = None
 
     @property
     def end_time_sec(self) -> float:
