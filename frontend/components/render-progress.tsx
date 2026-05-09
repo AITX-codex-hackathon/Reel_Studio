@@ -17,7 +17,9 @@ interface Props {
 
 export function RenderProgressCard({ projectId, job, liveProgress }: Props) {
   const progressPct = (liveProgress ?? job.progress) * 100;
-  const isRunning = job.status === "running" || job.status === "pending";
+  const isQueued = job.status === "pending";
+  const isRunning = job.status === "running";
+  const isActive = isQueued || isRunning;
   const isDone = job.status === "succeeded";
   const isError = job.status === "failed";
 
@@ -43,7 +45,7 @@ export function RenderProgressCard({ projectId, job, liveProgress }: Props) {
                 : "bg-gradient-brand text-white",
           )}
         >
-          {isRunning ? (
+          {isActive ? (
             <Loader2 className="w-5 h-5 animate-spin" />
           ) : (
             <Film className="w-5 h-5" />
@@ -54,10 +56,10 @@ export function RenderProgressCard({ projectId, job, liveProgress }: Props) {
             {job.pass_type === "draft" ? "Draft preview" : "Final render"}
           </div>
           <div className="text-xs text-ink-subtle">
+            {isQueued && "Queued"}
             {isRunning && `${Math.round(progressPct)}% — encoding…`}
             {isDone && "Ready"}
             {isError && "Failed"}
-            {job.status === "pending" && !liveProgress && "Queued"}
           </div>
         </div>
         {isDone && (
@@ -69,7 +71,7 @@ export function RenderProgressCard({ projectId, job, liveProgress }: Props) {
         )}
       </div>
 
-      {isRunning && (
+      {isActive && (
         <div className="mt-4">
           <Progress value={progressPct} />
         </div>

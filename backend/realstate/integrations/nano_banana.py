@@ -1,4 +1,4 @@
-"""Nano Banana — Google Gemini 2.5 Flash Image.
+"""Nano Banana Pro — Google Gemini image generation.
 
 Used for:
   - generating missing shots (e.g. "sunset exterior" when only daytime uploads exist)
@@ -17,8 +17,8 @@ log = logging.getLogger(__name__)
 
 
 class NanoBananaClient:
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash-image"):
-        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3-pro-image-preview"):
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         self.model = os.getenv("GEMINI_IMAGE_MODEL", model)
 
     @property
@@ -37,7 +37,7 @@ class NanoBananaClient:
         Returns the output path on success, None on failure or if disabled.
         """
         if not self.enabled:
-            log.info("Nano Banana disabled (no GOOGLE_API_KEY) — skipping generation for: %s", prompt[:60])
+            log.info("Nano Banana disabled (no GEMINI_API_KEY) — skipping generation for: %s", prompt[:60])
             return None
 
         try:
@@ -65,6 +65,10 @@ class NanoBananaClient:
                 lambda: client.models.generate_content(
                     model=self.model,
                     contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["TEXT", "IMAGE"],
+                        image_config=types.ImageConfig(aspect_ratio=aspect_ratio),
+                    ),
                 )
             )
         except Exception as e:

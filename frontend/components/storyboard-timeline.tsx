@@ -44,7 +44,7 @@ export function StoryboardTimeline({ storyboard, uploads }: Props) {
             </p>
             <p className="text-amber-800/80 mt-0.5">
               Either upload more matching photos or enable a generative provider
-              (set <code className="bg-amber-100 px-1 rounded">GOOGLE_API_KEY</code> for Nano Banana).
+              (set <code className="bg-amber-100 px-1 rounded">GEMINI_API_KEY</code> for Nano Banana Pro).
             </p>
           </div>
         </div>

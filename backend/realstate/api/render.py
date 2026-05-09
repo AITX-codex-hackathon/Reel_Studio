@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ..models.project import RenderJob, RenderStatus
 from ..models.storyboard import Storyboard
 from ..pipelines.multiscale_pipeline import MultiPassRenderer
-from ..storage import ProjectRow, RenderRow, StoryboardRow, get_db
+from ..storage import ProjectRow, RenderRow, StoryboardRow, get_db, get_sessionmaker
 from ..storage.filesystem import ProjectFiles, TemplateLoader
 from .ws import broadcast_render_progress
 
@@ -121,15 +121,13 @@ async def _run_render(
     scratch: Path,
 ) -> None:
     """Background render task. Updates DB row + pushes WS progress."""
-    from ..storage import SessionLocal
-
     template = _loader.get(template_id)
     if not template:
         log.error("Template %s vanished mid-render", template_id)
         return
 
-    assert SessionLocal is not None
-    with SessionLocal() as db:
+    SessionMaker = get_sessionmaker()
+    with SessionMaker() as db:
         row = db.get(RenderRow, job_id)
         if not row:
             return
@@ -149,7 +147,7 @@ async def _run_render(
             now = asyncio.get_event_loop().time()
             if now - last_push >= 0.2 or progress.progress >= 1.0:
                 last_push = now
-                with SessionLocal() as db:
+                with SessionMaker() as db:
                     row = db.get(RenderRow, job_id)
                     if row:
                         row.progress = progress.progress
@@ -165,7 +163,7 @@ async def _run_render(
                     },
                 )
 
-        with SessionLocal() as db:
+        with SessionMaker() as db:
             row = db.get(RenderRow, job_id)
             if row:
                 row.status = RenderStatus.SUCCEEDED.value
@@ -188,7 +186,7 @@ async def _run_render(
 
     except Exception as e:
         log.exception("Render %s failed", job_id)
-        with SessionLocal() as db:
+        with SessionMaker() as db:
             row = db.get(RenderRow, job_id)
             if row:
                 row.status = RenderStatus.FAILED.value
