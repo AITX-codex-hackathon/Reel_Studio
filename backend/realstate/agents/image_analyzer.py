@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Optional
 
 from .claude_client import ClaudeClient, ClaudeUnavailable
+from .vlm_factory import get_vlm_client
 
 log = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ visible photographer/reflection, time-stamped photos, low resolution.
 
 class ImageAnalyzer:
     def __init__(self, claude: Optional[ClaudeClient] = None):
-        self.claude = claude or ClaudeClient()
+        self.claude = claude or get_vlm_client()
 
     async def analyze(self, image_path: Path) -> ImageAnalysisResult:
         if self.claude.enabled:

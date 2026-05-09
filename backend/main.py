@@ -61,10 +61,13 @@ app.add_middleware(
 def health() -> dict:
     return {
         "status": "ok",
+        "vlm": f"{settings.vlm_provider}/{settings.vlm_model}",
         "providers": {
+            "openai": bool(settings.openai_api_key),
             "anthropic": bool(settings.anthropic_api_key),
-            "google_nano_banana": bool(settings.google_api_key),
+            "fal": bool(settings.fal_api_key),
             "runway": bool(settings.runway_api_key),
+            "google_nano_banana": bool(settings.google_api_key),
             "elevenlabs": bool(settings.elevenlabs_api_key),
         },
     }
