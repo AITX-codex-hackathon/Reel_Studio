@@ -1,0 +1,171 @@
+template_id: luxury-estate
+name: Luxury Estate
+description: >
+  Slow, cinematic 60-second walkthrough for high-end and luxury listings. Every shot
+  lingers. Architecture, light, and craftsmanship take center stage. Mood: aspirational,
+  timeless, editorial.
+author: AutoHDR
+version: "1.0.0"
+
+target_duration_sec: 60.0
+aspect_ratio: "9:16"
+pacing_mode: free
+
+global_color_grade: warm_cinematic
+
+draft_resolution_p: 540
+final_resolution_p: 1080
+draft_crf: 28
+final_crf: 18
+
+shot_slots:
+  - slot_id: hero_exterior
+    description: Hero exterior wide — golden hour or twilight, full facade, epic scale
+    room_type: exterior
+    duration_sec: 6.0
+    motion: slow_zoom_in
+    motion_strength: 0.28
+    transition_in: fade
+    text_overlay_id: address_card
+    fallback_to_generated: true
+    generation_prompt: >
+      Cinematic wide-angle exterior of a luxury estate at golden hour, dramatic sky,
+      lush landscaping, warm window glow, architectural photography, ultra detailed, 9:16
+
+  - slot_id: foyer
+    description: Grand entry foyer — symmetry, chandelier, marble, scale
+    room_type: foyer
+    duration_sec: 4.0
+    motion: push_in
+    motion_strength: 0.35
+    transition_in: dissolve
+
+  - slot_id: living_wide
+    description: Living room wide — fireplace, ceiling height, full depth
+    room_type: living_room
+    duration_sec: 5.0
+    motion: slow_zoom_out
+    motion_strength: 0.28
+    transition_in: dissolve
+
+  - slot_id: kitchen_wide
+    description: Kitchen wide — island, appliances, full room
+    room_type: kitchen
+    duration_sec: 4.0
+    motion: pan_right
+    motion_strength: 0.35
+    transition_in: dissolve
+
+  - slot_id: kitchen_detail
+    description: Kitchen detail — marble countertop, hardware, or espresso machine
+    room_type: kitchen
+    duration_sec: 2.5
+    motion: slow_zoom_in
+    motion_strength: 0.5
+    transition_in: cut
+
+  - slot_id: dining
+    description: Dining area with natural light — table set, tall windows
+    room_type: dining
+    duration_sec: 3.0
+    motion: pan_left
+    motion_strength: 0.3
+    transition_in: dissolve
+    must_fill: false
+
+  - slot_id: primary_bedroom
+    description: Primary bedroom — wide, soft light, calm and aspirational
+    room_type: bedroom
+    duration_sec: 4.5
+    motion: slow_zoom_in
+    motion_strength: 0.28
+    transition_in: dissolve
+    text_overlay_id: feature_beds
+
+  - slot_id: primary_bath
+    description: Primary bathroom — soaking tub, double vanity, luxury finishes
+    room_type: bathroom
+    duration_sec: 3.5
+    motion: pan_right
+    motion_strength: 0.3
+    transition_in: cut
+
+  - slot_id: detail_soul
+    description: Soul detail — art, vase, books, plants, fireplace close-up
+    room_type: detail
+    duration_sec: 2.0
+    motion: slow_zoom_in
+    motion_strength: 0.55
+    transition_in: cut
+
+  - slot_id: outdoor_living
+    description: Backyard, pool, or outdoor entertaining space
+    room_type: backyard
+    duration_sec: 5.0
+    motion: pan_right
+    motion_strength: 0.3
+    transition_in: dissolve
+
+  - slot_id: view_or_amenity
+    description: Hero amenity — view, wine cellar, gym, theater, or rooftop
+    room_type: view
+    duration_sec: 4.0
+    motion: slow_zoom_out
+    motion_strength: 0.3
+    transition_in: dissolve
+    must_fill: false
+
+  - slot_id: closing_exterior
+    description: Closing exterior — twilight blue hour, every light on
+    room_type: exterior
+    duration_sec: 6.0
+    motion: pull_out
+    motion_strength: 0.38
+    transition_in: dissolve
+    text_overlay_id: price_card
+    fallback_to_generated: true
+    generation_prompt: >
+      Luxury estate at twilight blue hour, every window glowing warm, manicured grounds,
+      slight aerial angle, magazine-quality real estate photography, 9:16
+
+audio_cues:
+  - track_query: "mood:cinematic tempo:slow"
+    kind: music
+    start_time_sec: 0.0
+    volume_db: -3.0
+    fade_in_sec: 1.5
+    fade_out_sec: 3.0
+
+text_overlays:
+  - overlay_id: address_card
+    text_template: "{{ property.address }}"
+    position: bottom_left
+    font_family: Inter
+    font_size_px: 52
+    color_hex: "#FFFFFF"
+    background_hex: "#00000066"
+    duration_sec: 5.0
+    fade_in_sec: 0.6
+    fade_out_sec: 0.6
+
+  - overlay_id: feature_beds
+    text_template: "{{ property.beds }} BD  ·  {{ property.baths }} BA  ·  {{ property.sqft }} sqft"
+    position: bottom_left
+    font_family: Inter
+    font_size_px: 40
+    color_hex: "#FFFFFF"
+    background_hex: "#00000066"
+    duration_sec: 3.5
+    fade_in_sec: 0.4
+    fade_out_sec: 0.4
+
+  - overlay_id: price_card
+    text_template: "{{ property.price }}"
+    position: center
+    font_family: Inter
+    font_size_px: 80
+    color_hex: "#FFFFFF"
+    background_hex: "#00000099"
+    duration_sec: 5.0
+    fade_in_sec: 0.8
+    fade_out_sec: 0.8
