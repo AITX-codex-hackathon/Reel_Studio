@@ -1,7 +1,4 @@
-"""High-level service: tie agents + scheduler + pipeline together to build storyboards.
-
-The API layer should only call into this; it shouldn't poke at agents directly.
-"""
+"""High-level service: build storyboards from uploaded images."""
 from __future__ import annotations
 
 import logging
@@ -9,11 +6,9 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from jinja2 import Environment, StrictUndefined, UndefinedError
-
 from .agents.image_analyzer import ImageAnalyzer, ImageAnalysisResult
 from .agents.shot_matcher import AnalyzedUpload, ShotMatcher
-from .integrations.nano_banana import NanoBananaClient
+from .data.style_recipes import ROOM_ORDER, get_for_room
 from .models.project import Project
 from .models.shot import MotionPreset, TransitionType
 from .models.storyboard import ResolvedShot, Storyboard
@@ -23,24 +18,21 @@ from .storage.filesystem import ProjectFiles
 
 log = logging.getLogger(__name__)
 
+_CLIP_DURATION_SEC = 5.0  # fixed until beat-analysis module is wired in
+
 
 class StoryboardBuilder:
-    """Builds a Storyboard from a Project, a Template, and a set of analyzed uploads."""
-
     def __init__(
         self,
         analyzer: Optional[ImageAnalyzer] = None,
         matcher: Optional[ShotMatcher] = None,
         scheduler: Optional[PacingScheduler] = None,
-        nano_banana: Optional[NanoBananaClient] = None,
         project_files: Optional[ProjectFiles] = None,
     ):
         self.analyzer = analyzer or ImageAnalyzer()
         self.matcher = matcher or ShotMatcher()
         self.scheduler = scheduler or PacingScheduler()
-        self.nano_banana = nano_banana or NanoBananaClient()
         self.project_files = project_files or ProjectFiles()
-        self.jinja = Environment(undefined=StrictUndefined)
 
     async def build(
         self,
@@ -49,13 +41,6 @@ class StoryboardBuilder:
         uploads: list[tuple[str, Path, Optional[ImageAnalysisResult]]],
         audio_path_for_pacing: Optional[Path] = None,
     ) -> Storyboard:
-        """Args:
-            project: the property
-            template: the chosen template
-            uploads: list of (upload_id, image_path, cached_analysis_or_None)
-            audio_path_for_pacing: optional, used by the scheduler for beat-snapping
-        Returns: a fully resolved Storyboard.
-        """
         # 1. Analyze any unanalyzed uploads
         analyzed: list[AnalyzedUpload] = []
         for upload_id, path, cached in uploads:
@@ -63,98 +48,65 @@ class StoryboardBuilder:
                 cached = await self.analyzer.analyze(path)
             analyzed.append(AnalyzedUpload(upload_id=upload_id, image_path=str(path), analysis=cached))
 
-        # 2. Match images to slots
+        # 2. Match images to template slots
         match = self.matcher.match(template, analyzed)
 
-        # 3. Generate fallback images for slots that need them
+        # 3. Build shots — no image generation at storyboard time; FAL handles it during render
         upload_by_id = {u.upload_id: u for u in analyzed}
-        generated_paths: dict[str, Path] = {}
-        for slot_id in match.needs_generation:
-            slot = template.slot_by_id[slot_id]
-            prompt = slot.generation_prompt or slot.description
-            out_path = self.project_files.generated_dir(project.id) / f"{slot_id}.jpg"
-            generated = await self.nano_banana.generate(
-                prompt=prompt,
-                out_path=out_path,
-                aspect_ratio=template.aspect_ratio,
-            )
-            if generated:
-                generated_paths[slot_id] = generated
-            else:
-                # generation failed — push to unfilled
-                log.info("Generation failed for slot %s; marking unfilled", slot_id)
-
-        # Final unfilled list
-        final_unfilled = list(match.unfilled)
-        for slot_id in match.needs_generation:
-            if slot_id not in generated_paths:
-                final_unfilled.append(slot_id)
-
-        # 4. Pacing — compute timings (using audio if provided)
         timings = self.scheduler.schedule(template, str(audio_path_for_pacing) if audio_path_for_pacing else None)
         timing_by_slot = {t.slot_id: t for t in timings}
 
-        # 5. Build ResolvedShot list
-        property_ctx = {
-            "address": project.address or "",
-            "price": project.price or "",
-            "beds": project.beds or "",
-            "baths": project.baths or "",
-            "sqft": f"{project.sqft:,}" if project.sqft else "",
-            "name": project.name or "",
-            "description": project.description or "",
-        }
-        text_overlay_by_id = template.text_overlay_by_id
-
         shots: list[ResolvedShot] = []
-        for slot in template.shot_slots:
+        for i, slot in enumerate(template.shot_slots):
             assigned_id = match.assignments.get(slot.slot_id)
-            image_path: Optional[str] = None
-            is_generated = False
-            source_upload_id: Optional[str] = None
 
             if assigned_id and assigned_id in upload_by_id:
                 image_path = upload_by_id[assigned_id].image_path
+                room_type = upload_by_id[assigned_id].analysis.room_type or slot.room_type
+                is_generated = False
                 source_upload_id = assigned_id
-            elif slot.slot_id in generated_paths:
-                image_path = str(generated_paths[slot.slot_id])
+            elif slot.must_fill:
+                # No matching upload — mark as generated (FAL t2v will fill during render)
+                image_path = ""
+                room_type = slot.room_type
                 is_generated = True
+                source_upload_id = None
             else:
-                continue  # slot dropped
+                continue  # optional slot, drop it
 
-            # Render text overlay (if any)
-            rendered_text: Optional[str] = None
-            if slot.text_overlay_id and slot.text_overlay_id in text_overlay_by_id:
-                tmpl = text_overlay_by_id[slot.text_overlay_id]
-                try:
-                    rendered_text = self.jinja.from_string(tmpl.text_template).render(property=property_ctx)
-                except UndefinedError as e:
-                    log.warning("Text overlay %s missing data (%s); skipping", slot.text_overlay_id, e)
-                    rendered_text = None
+            # Auto-select style recipe based on room type
+            recipe = get_for_room(room_type, seed=i)
 
             timing = timing_by_slot.get(slot.slot_id)
             shots.append(
                 ResolvedShot(
                     slot_id=slot.slot_id,
                     image_path=image_path,
-                    start_time_sec=timing.start_time_sec if timing else 0.0,
-                    duration_sec=timing.duration_sec if timing else slot.duration_sec,
+                    start_time_sec=timing.start_time_sec if timing else sum(s.duration_sec for s in shots),
+                    duration_sec=_CLIP_DURATION_SEC,  # beat-analysis will override this field later
                     motion=slot.motion,
                     motion_strength=slot.motion_strength,
                     transition_in=slot.transition_in,
-                    color_grade=slot.color_grade,
-                    text_overlay_id=slot.text_overlay_id,
-                    rendered_text_overlay=rendered_text,
+                    color_grade=None,  # FAL handles visual style
+                    text_overlay_id=None,  # no overlays
+                    rendered_text_overlay=None,
                     is_generated=is_generated,
                     source_upload_id=source_upload_id,
+                    room_type=room_type,
+                    style_recipe_id=recipe.style_id if recipe else None,
                 )
             )
 
-        # Recompute total duration from actual shots
-        if shots:
-            total = max(s.end_time_sec for s in shots)
-        else:
-            total = template.target_duration_sec
+        # Sort shots into house-tour order
+        shots.sort(key=lambda s: ROOM_ORDER.get(s.room_type or "", 99))
+
+        # Recompute start times after sort
+        cursor = 0.0
+        for s in shots:
+            s.start_time_sec = cursor
+            cursor += s.duration_sec
+
+        total = cursor or template.target_duration_sec
 
         return Storyboard(
             storyboard_id=str(uuid.uuid4()),
@@ -162,10 +114,10 @@ class StoryboardBuilder:
             template_id=template.template_id,
             shots=shots,
             audio_cues=template.audio_cues,
-            text_overlays=template.text_overlays,
+            text_overlays=[],
             total_duration_sec=total,
             aspect_ratio=template.aspect_ratio,
-            generated_slot_ids=list(generated_paths.keys()),
-            unfilled_slot_ids=final_unfilled,
+            generated_slot_ids=[s.slot_id for s in shots if s.is_generated],
+            unfilled_slot_ids=list(match.unfilled),
             notes=match.notes,
         )
