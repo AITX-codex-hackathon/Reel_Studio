@@ -68,10 +68,10 @@ export function UploadDropzone({ projectId, uploads, onChange }: Props) {
           <UploadIcon className="w-6 h-6 text-primary" />
         </div>
         <p className="font-display text-lg font-semibold">
-          {isDragActive ? "Drop them here" : "Drop 50–150 property photos"}
+          {isDragActive ? "Drop them here" : "Drop property photos"}
         </p>
         <p className="text-sm text-ink-muted mt-1">
-          JPG, PNG, WebP, HEIC. We'll analyze and storyboard them automatically.
+          JPG, PNG, WebP, HEIC. One great image is enough; more images give the agents more coverage.
         </p>
         {busy && (
           <div className="mt-5 max-w-sm mx-auto">
