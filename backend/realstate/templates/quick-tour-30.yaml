@@ -1,0 +1,117 @@
+template_id: quick-tour-30
+name: Quick Tour 30s
+description: >
+  Fast 30-second beat-synced reel optimized for TikTok and Instagram Reels. Punchy
+  cuts every 2-3 seconds hit the beat. Price and stats splashed in the final 4 seconds.
+  Energy: upbeat, punchy, scroll-stopping.
+author: AutoHDR
+version: "1.0.0"
+
+target_duration_sec: 30.0
+aspect_ratio: "9:16"
+pacing_mode: beat
+
+global_color_grade: punchy_vivid
+
+draft_resolution_p: 540
+final_resolution_p: 1080
+draft_crf: 28
+final_crf: 20
+
+shot_slots:
+  - slot_id: hook_exterior
+    description: Hook shot — striking exterior, punchy angle, catches the eye
+    room_type: exterior
+    duration_sec: 2.5
+    motion: push_in
+    motion_strength: 0.6
+    transition_in: cut
+    fallback_to_generated: true
+    generation_prompt: Striking modern home exterior, punchy wide angle, bright daylight, 9:16
+
+  - slot_id: living_fast
+    description: Living room — wide, energy, quick reveal
+    room_type: living_room
+    duration_sec: 2.5
+    motion: pan_right
+    motion_strength: 0.5
+    transition_in: cut
+
+  - slot_id: kitchen_punch
+    description: Kitchen — island and appliances, tight and dynamic
+    room_type: kitchen
+    duration_sec: 2.5
+    motion: push_in
+    motion_strength: 0.55
+    transition_in: cut
+
+  - slot_id: kitchen_detail_fast
+    description: Kitchen detail — marble, hardware, quick beat
+    room_type: kitchen
+    duration_sec: 1.5
+    motion: slow_zoom_in
+    motion_strength: 0.6
+    transition_in: cut
+
+  - slot_id: bedroom_snap
+    description: Primary bedroom wide — clean, quick
+    room_type: bedroom
+    duration_sec: 2.5
+    motion: pan_left
+    motion_strength: 0.45
+    transition_in: cut
+
+  - slot_id: bathroom_snap
+    description: Primary bath — double vanity or soaking tub
+    room_type: bathroom
+    duration_sec: 2.0
+    motion: slow_zoom_in
+    motion_strength: 0.5
+    transition_in: cut
+    must_fill: false
+
+  - slot_id: backyard_snap
+    description: Backyard or pool — wow factor
+    room_type: backyard
+    duration_sec: 3.0
+    motion: pan_right
+    motion_strength: 0.5
+    transition_in: cut
+
+  - slot_id: exterior_close
+    description: Exterior detail or view — builds desire
+    room_type: exterior
+    duration_sec: 2.0
+    motion: slow_zoom_in
+    motion_strength: 0.5
+    transition_in: cut
+
+  - slot_id: price_drop
+    description: Price splash — exterior or living, big overlay
+    room_type: exterior
+    duration_sec: 4.0
+    motion: slow_zoom_out
+    motion_strength: 0.3
+    transition_in: cut
+    text_overlay_id: stats_card
+
+audio_cues:
+  - track_query: "mood:upbeat tempo:fast"
+    kind: music
+    start_time_sec: 0.0
+    volume_db: -2.0
+    fade_in_sec: 0.0
+    fade_out_sec: 1.5
+
+text_overlays:
+  - overlay_id: stats_card
+    text_template: >
+      {{ property.price }}  ·  {{ property.beds }}BD  {{ property.baths }}BA  ·  {{ property.sqft }} sqft
+    position: center
+    font_family: Inter
+    font_size_px: 44
+    color_hex: "#FFFFFF"
+    background_hex: "#00000099"
+    duration_sec: 3.5
+    fade_in_sec: 0.3
+    fade_out_sec: 0.5
