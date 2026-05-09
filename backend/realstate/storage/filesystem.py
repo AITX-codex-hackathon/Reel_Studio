@@ -24,7 +24,7 @@ class ProjectFiles:
     """
 
     def __init__(self, root: Optional[str] = None):
-        self.root = Path(root or os.getenv("STORAGE_ROOT", "./storage_data"))
+        self.root = Path(root or os.getenv("STORAGE_ROOT", "./storage_data")).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
 
     def project_dir(self, project_id: str) -> Path:
