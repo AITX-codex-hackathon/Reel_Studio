@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, type Health, type Project } from "@/lib/api";
+import { NewReelButton } from "@/components/auth/NewReelButton";
 
 export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -40,12 +41,10 @@ export default function DashboardPage() {
             shots with Nano Banana, and render a beat-aware 60-second reel.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Button asChild size="lg">
-              <Link href="/projects/new">
-                <Plus className="w-4 h-4" />
-                Start a new reel
-              </Link>
-            </Button>
+            <NewReelButton size="lg">
+              <Plus className="w-4 h-4 mr-2" />
+              Start a new reel
+            </NewReelButton>
             <Button asChild variant="outline" size="lg">
               <Link href="/templates">
                 Browse templates <ArrowRight className="w-4 h-4" />
@@ -79,11 +78,9 @@ export default function DashboardPage() {
               Continue where you left off, or start fresh.
             </p>
           </div>
-          <Button asChild size="sm">
-            <Link href="/projects/new">
-              <Plus className="w-4 h-4" /> New
-            </Link>
-          </Button>
+          <NewReelButton size="sm">
+            <Plus className="w-4 h-4 mr-2" /> New
+          </NewReelButton>
         </div>
 
         {loading ? (
@@ -102,11 +99,9 @@ export default function DashboardPage() {
               <p className="text-sm text-ink-muted mt-1 mb-6">
                 Create your first reel — the whole flow takes about 2 minutes.
               </p>
-              <Button asChild>
-                <Link href="/projects/new">
-                  <Wand2 className="w-4 h-4" /> Create your first reel
-                </Link>
-              </Button>
+              <NewReelButton>
+                <Wand2 className="w-4 h-4 mr-2" /> Create your first reel
+              </NewReelButton>
             </CardContent>
           </Card>
         ) : (
