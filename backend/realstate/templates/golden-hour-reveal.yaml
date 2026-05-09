@@ -1,0 +1,127 @@
+template_id: golden-hour-reveal
+name: Golden Hour Reveal
+description: >
+  45-second Instagram Reels hero. Opens with a sweeping exterior drone shot at golden
+  hour, dissolves into warm interior highlights, closes with the price card. Mood:
+  aspirational, cinematic, warm.
+author: AutoHDR
+version: "1.0.0"
+
+target_duration_sec: 45.0
+aspect_ratio: "9:16"
+pacing_mode: free
+
+global_color_grade: warm_cinematic
+
+draft_resolution_p: 540
+final_resolution_p: 1080
+draft_crf: 28
+final_crf: 18
+
+shot_slots:
+  - slot_id: aerial_exterior
+    description: Wide drone or elevated exterior at golden hour — sky ablaze, lush landscaping
+    room_type: exterior
+    duration_sec: 5.0
+    motion: slow_zoom_out
+    motion_strength: 0.35
+    transition_in: fade
+    text_overlay_id: address_card
+    fallback_to_generated: true
+    generation_prompt: >
+      Cinematic drone exterior of luxury home at golden hour, blazing orange sky,
+      lush greenery, warm window glow, architectural photography, 9:16
+
+  - slot_id: exterior_detail
+    description: Close detail of the facade — door, stonework, or landscaping
+    room_type: exterior
+    duration_sec: 2.5
+    motion: slow_zoom_in
+    motion_strength: 0.5
+    transition_in: cut
+
+  - slot_id: foyer_reveal
+    description: Entry foyer push-in — grand scale, natural light
+    room_type: foyer
+    duration_sec: 4.0
+    motion: push_in
+    motion_strength: 0.4
+    transition_in: dissolve
+
+  - slot_id: living_golden
+    description: Living room bathed in golden hour window light
+    room_type: living_room
+    duration_sec: 4.5
+    motion: slow_zoom_in
+    motion_strength: 0.3
+    transition_in: dissolve
+
+  - slot_id: kitchen_hero
+    description: Hero kitchen wide — island, finishes, light
+    room_type: kitchen
+    duration_sec: 4.0
+    motion: pan_right
+    motion_strength: 0.35
+    transition_in: cut
+
+  - slot_id: primary_bed
+    description: Primary bedroom — soft morning or golden light, calm
+    room_type: bedroom
+    duration_sec: 3.5
+    motion: slow_zoom_in
+    motion_strength: 0.3
+    transition_in: dissolve
+
+  - slot_id: backyard_pool
+    description: Backyard pool or outdoor living at golden hour
+    room_type: backyard
+    duration_sec: 5.0
+    motion: pan_left
+    motion_strength: 0.35
+    transition_in: dissolve
+    fallback_to_generated: true
+    generation_prompt: >
+      Luxury backyard pool at golden hour, warm reflections, lush landscaping, 9:16
+
+  - slot_id: closing_wide
+    description: Closing wide exterior — pull back to reveal full property at dusk
+    room_type: exterior
+    duration_sec: 5.0
+    motion: pull_out
+    motion_strength: 0.4
+    transition_in: dissolve
+    text_overlay_id: price_card
+    fallback_to_generated: true
+    generation_prompt: >
+      Luxury home at blue hour twilight, every window glowing warmly, 9:16
+
+audio_cues:
+  - track_query: "mood:cinematic tempo:slow"
+    kind: music
+    start_time_sec: 0.0
+    volume_db: -4.0
+    fade_in_sec: 1.0
+    fade_out_sec: 2.5
+
+text_overlays:
+  - overlay_id: address_card
+    text_template: "{{ property.address }}"
+    position: bottom_left
+    font_family: Inter
+    font_size_px: 48
+    color_hex: "#FFFFFF"
+    background_hex: "#00000066"
+    duration_sec: 4.0
+    fade_in_sec: 0.5
+    fade_out_sec: 0.5
+
+  - overlay_id: price_card
+    text_template: "{{ property.price }}"
+    position: center
+    font_family: Inter
+    font_size_px: 80
+    color_hex: "#FFFFFF"
+    background_hex: "#00000099"
+    duration_sec: 4.5
+    fade_in_sec: 0.8
+    fade_out_sec: 0.8
