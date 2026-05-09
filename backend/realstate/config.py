@@ -29,7 +29,7 @@ class Settings(BaseModel):
 
     # Image-to-video provider — "fal" | "runway"
     i2v_provider: str = os.getenv("I2V_PROVIDER", "runway")
-    fal_api_key: str = os.getenv("FAL_API_KEY", "")
+    fal_api_key: str = os.getenv("FAL_API_KEY") or os.getenv("FAL_KEY", "")
     runway_api_key: str = os.getenv("RUNWAY_API_KEY", "")
 
     # Audio
