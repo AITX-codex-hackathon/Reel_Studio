@@ -270,6 +270,84 @@ class FFmpegBuilder:
         return "[aout]"
 
 
+    def build_from_clips(
+        self,
+        shots: list,
+        config: RenderConfig,
+        output_path: Path,
+        audio_cue_files: dict[int, str],
+        total_duration_sec: float,
+        audio_cues: Optional[list] = None,
+        beat_timestamps: Optional[list[float]] = None,
+    ) -> FFmpegCommand:
+        """Build FFmpeg command from pre-rendered FAL video clips.
+
+        Each shot must have video_clip_path set. Clips are trimmed to their
+        duration and concatenated. Beat timestamps are accepted but ignored
+        until the beat-analysis module is wired in.
+        """
+        out_w, out_h = config.output_resolution()
+        fps = config.fps
+
+        inputs: list[str] = []
+        filter_parts: list[str] = []
+
+        valid_shots = [s for s in shots if s.video_clip_path]
+        for i, shot in enumerate(valid_shots):
+            inputs.extend(["-i", shot.video_clip_path])
+            trim_dur = shot.duration_sec
+            # Scale to target resolution, trim to shot duration
+            filter_parts.append(
+                f"[{i}:v]"
+                f"trim=0:{trim_dur:.3f},setpts=PTS-STARTPTS,"
+                f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+                f"crop={out_w}:{out_h},"
+                f"fps={fps},format=yuv420p"
+                f"[v{i}]"
+            )
+
+        n = len(valid_shots)
+        if n == 0:
+            raise ValueError("No clips with video_clip_path to assemble")
+
+        concat_in = "".join(f"[v{i}]" for i in range(n))
+        filter_parts.append(f"{concat_in}concat=n={n}:v=1:a=0[vout]")
+
+        audio_label = self._build_audio(
+            cues=audio_cues or [],
+            cue_files=audio_cue_files,
+            input_offset=n,
+            inputs=inputs,
+            filter_parts=filter_parts,
+            total_duration_sec=total_duration_sec,
+        )
+
+        args = [self.ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-stats"]
+        args.extend(inputs)
+        args.extend(["-filter_complex", ";".join(filter_parts)])
+        args.extend(["-map", "[vout]"])
+        if audio_label:
+            args.extend(["-map", audio_label])
+
+        args.extend([
+            "-c:v", "libx264",
+            "-preset", config.preset,
+            "-crf", str(config.crf),
+            "-pix_fmt", "yuv420p",
+            "-r", str(fps),
+            "-movflags", "+faststart",
+        ])
+        if audio_label:
+            args.extend(["-c:a", "aac", "-b:a", f"{config.audio_bitrate_kbps}k", "-shortest"])
+
+        args.append(str(output_path))
+        return FFmpegCommand(
+            args=args,
+            output_path=str(output_path),
+            expected_duration_sec=total_duration_sec,
+        )
+
+
 def _opening_fade_dur(t: TransitionType) -> float:
     return {
         TransitionType.CUT: 0.0,
