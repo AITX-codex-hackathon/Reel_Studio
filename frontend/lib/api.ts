@@ -125,6 +125,15 @@ export type Health = {
   providers: Record<string, boolean>;
 };
 
+export type VideoStyle = {
+  style_id: string;
+  category: string;
+  mood: string;
+  camera_motion: string;
+  environmental_dynamics: string;
+  video_prompt: string;
+};
+
 // ---- Endpoints ----
 export const api = {
   health: () => request<Health>("/health"),
@@ -191,4 +200,10 @@ export const api = {
 
   // audio
   listTracks: () => request<AudioTrack[]>("/audio"),
+
+  // styles
+  listStyles: (category?: string) =>
+    request<VideoStyle[]>(`/styles${category ? `?category=${encodeURIComponent(category)}` : ""}`),
+  listStyleCategories: () => request<string[]>("/styles/categories"),
+  getStyle: (styleId: string) => request<VideoStyle>(`/styles/${styleId}`),
 };
