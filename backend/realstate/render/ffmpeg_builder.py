@@ -262,7 +262,7 @@ class FFmpegBuilder:
                 f"[{added_labels[0]}]atrim=duration={total_duration_sec:.3f}[aout]"
             )
         else:
-            mix_in = "".join(f"[{l}]" for l in added_labels)
+            mix_in = "".join(f"[{label}]" for label in added_labels)
             filter_parts.append(
                 f"{mix_in}amix=inputs={len(added_labels)}:duration=longest:dropout_transition=0,"
                 f"atrim=duration={total_duration_sec:.3f}[aout]"
