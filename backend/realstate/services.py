@@ -205,13 +205,6 @@ class StoryboardBuilder:
 
         shots_planned = list(analyzed)
 
-        # Strategic closing exterior repeat: if best exterior isn't last, add it as the outro
-        exteriors = [u for u in analyzed if (u.analysis.room_type or "").startswith("exterior")]
-        if len(shots_planned) >= 3 and exteriors:
-            best_exterior = max(exteriors, key=lambda u: u.analysis.quality_score)
-            if shots_planned[-1].upload_id != best_exterior.upload_id:
-                shots_planned.append(best_exterior)
-
         music_context = _music_context(music, beat_timestamps_ms)
 
         await _emit(
@@ -267,12 +260,11 @@ class StoryboardBuilder:
             cursor += duration_sec
 
         total = cursor if shots else 30.0
-        closing_note = " Closing exterior repeat added." if len(shots_planned) > len(analyzed) else ""
 
         await _emit(
             telemetry,
             stage="storyboard",
-            message=f"Storyboard ready: {len(shots)} shots, {total:.1f}s total.{closing_note}",
+            message=f"Storyboard ready: {len(shots)} shots, {total:.1f}s total.",
             status="succeeded",
             progress=1.0,
         )
@@ -290,7 +282,7 @@ class StoryboardBuilder:
             beat_timestamps=[ms / 1000 for ms in (beat_timestamps_ms or [])],
             generated_slot_ids=[],
             unfilled_slot_ids=[],
-            notes=f"{len(shots)} shots in house-tour order.{closing_note}",
+            notes=f"{len(shots)} shots in house-tour order.",
         )
 
     async def _analyze_uploads(
