@@ -74,6 +74,7 @@ export function MusicBrowser({ projectId, currentMusic, onInserted }: MusicBrows
         const next = await api.getMusicInsertJob(projectId, job.job_id);
         setJob(next);
         if (next.status === "complete" && next.result) {
+          stopPreview();
           onInserted(next.result);
         }
         if (next.status === "failed") {
@@ -131,8 +132,17 @@ export function MusicBrowser({ projectId, currentMusic, onInserted }: MusicBrows
     }
   };
 
+  const stopPreview = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+    }
+    setPlayingId(null);
+  };
+
   const insertSelected = async () => {
     if (!selectedTrack) return;
+    stopPreview();
     setError(null);
     setJob(null);
     try {
