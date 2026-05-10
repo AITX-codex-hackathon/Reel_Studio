@@ -1,12 +1,10 @@
-# ReelStudio — AI Cinematic Reel Studio for Real Estate
+# ReelStudio — Cinematic Reel Studio for Real Estate
 
-> Turn a folder of property photos into a beat-synced, Instagram-ready 9:16 cinematic reel in under 2 minutes — no editing skills required.
+> Turn a folder of property photos into a beat-synced, organic content for real estate clients — no editing skills required.
 
 ---
 
-## Judging Criteria — Georgian College Hackathon
-
-> This section directly addresses each judging dimension so reviewers can evaluate fit at a glance.
+## Judging Criteria
 
 ---
 
@@ -137,21 +135,17 @@ The storyboard renders as a horizontal scrollable strip of portrait-format (9:16
 
 ### 5. Track Fit
 
-**Track: AI-Powered Creative Tools / Generative Media**
+**1. AutoHDR Track**
+ReelStudio directly targets image-to-video generation for real estate businesses. Every listing photo is transformed into a cinematic 5-second video clip using FAL's Kling v1.6, with camera motion, color grading, and beat-synced timing — turning static HDR photography assets into high-quality motion content at scale.
 
-ReelStudio directly targets the intersection of AI vision, generative video, and creative automation — exactly what this track rewards.
-
-- **Generative AI as the core value driver:** FAL's Kling v1.6 turns still photos into cinematic motion. OpenAI Vision classifies and scores every photo. The system could not exist without these models.
-- **Real-world domain with clear ROI:** Real estate is a $4.8T industry where marketing quality directly correlates with sale price and days on market. Our tool replaces a $500–$2,000 per-listing production cost with ~$1 in API credits.
-- **End-to-end pipeline, not a wrapper:** We built a full agentic pipeline — analysis, planning, generation, scheduling, rendering, delivery — not a thin wrapper around one API call. The architecture is novel and the output quality reflects it.
-- **Production-ready output:** 9:16 1080p MP4, beat-synced audio, no black bars, no watermarks on final renders — ready to post directly to Instagram Reels, TikTok, or YouTube Shorts.
-- **Responsible AI use:** Explicit hallucination guardrails, quality-scored photo selection, and human review of the storyboard before any generation happens. The user is always in control.
+**2. Agents Track**
+The project autonomously decides how to edit, what to edit, and the overall theme of the edit. The agent layer — ImageAnalyzer, ShotMatcher, and StoryboardBuilder — independently classifies each photo, determines narrative order, selects cinematic style recipes, and plans shot timing against the music's BPM, all without any manual direction from the user.
 
 ---
 
 ## What It Does
 
-ReelStudio is a full-stack AI application that automates the production of professional real estate listing videos.
+ReelStudio is a full-stack application that automates the production of professional real estate listing videos.
 
 **Input:** A set of property photos (JPEG, PNG, HEIF).  
 **Output:** A 9:16 cinematic MP4 reel, beat-synced to music, ready for Instagram/TikTok/MLS.
@@ -447,114 +441,10 @@ EstateReelMaker/
 │       ├── api.ts                       # Typed API client
 │       ├── ws.ts                        # WebSocket connection manager
 │       └── utils.ts                     # cn(), formatSeconds()
-├── easy-beat-sync-master/               # Beat analysis module (teammate)
+├── easy-beat-sync-master/               # Beat analysis module
 │   ├── EasyBeatSync.py
 │   └── tools/free_music_beats.py
 ├── styleRecipe.txt                      # 100 cinematographer prompt recipes
 ├── run.sh                               # One-command startup script
 └── ARCHITECTURE.md                      # LTX-Video pattern mapping
 ```
-
----
-
-## Setup & Running
-
-### Prerequisites
-- Python 3.12
-- Node.js 18+
-- FFmpeg (`brew install ffmpeg` on macOS)
-
-### Environment Variables
-
-Create a `.env` file in the project root:
-
-```bash
-OPENAI_API_KEY=sk-...
-FAL_KEY=...
-GEMINI_API_KEY=...          # Optional: Nano Banana fallback generation
-PIXABAY_API_KEY=...         # Free music catalog
-ELEVENLABS_API_KEY=...      # Optional: TTS voiceover
-```
-
-### One-command start
-
-```bash
-# 1. Create the Python venv (first time only)
-python3.12 -m venv venv
-venv/bin/pip install './backend[audio,dev]'
-
-# 2. Install frontend deps (first time only)
-npm --prefix frontend install
-
-# 3. Start everything
-bash run.sh
-```
-
-Backend → http://localhost:8000  
-Frontend → http://localhost:3000  
-API docs → http://localhost:8000/docs
-
-### Manual start
-
-```bash
-# Terminal 1 — Backend
-cd backend
-../venv/bin/python -m uvicorn main:app --reload --port 8000
-
-# Terminal 2 — Frontend
-cd frontend
-npm run dev
-```
-
----
-
-## API Reference
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/health` | Provider status (OpenAI, FAL, Gemini) |
-| `POST` | `/projects` | Create project |
-| `GET` | `/projects` | List all projects |
-| `DELETE` | `/projects/{id}` | Delete project and all files |
-| `POST` | `/projects/{id}/uploads` | Upload photos (multipart/form-data) |
-| `POST` | `/projects/{id}/storyboard` | Generate storyboard (AI pipeline) |
-| `PUT` | `/projects/{id}/storyboard` | Save manual shot reorder |
-| `POST` | `/projects/{id}/music/insert` | Insert music track + extract beats |
-| `POST` | `/projects/{id}/renders` | Start render (`?pass_type=draft\|final`) |
-| `GET` | `/projects/{id}/renders/{id}/file` | Download MP4 |
-| `WS` | `/projects/{id}/ws` | Live render progress |
-| `GET` | `/styles` | List cinematic style recipes |
-| `GET` | `/free-music/tracks` | Search Pixabay music catalog |
-
----
-
-## Key Design Decisions
-
-**Why FAL Kling v1.6 over other video models?**
-Kling produces the most stable, architecture-preserving image-to-video of any commercially available model at the time of building. It respects spatial structure better than Runway Gen-3 or Pika for static architectural subjects.
-
-**Why not use LTX-Video's actual diffusion model?**
-Real estate reels require *photographic accuracy* — a generated exterior must match the actual building. Diffusion models hallucinate geometry. Kling's image-to-video approach keeps the source photo as ground truth while adding motion, which is exactly what this domain needs.
-
-**Why FFmpeg instead of MoviePy or OpenCV?**
-FFmpeg processes video in streaming fashion with no RAM overhead proportional to file size. A 60-second 1080p reel at 30fps would require gigabytes of intermediate frames in memory with frame-by-frame libraries. FFmpeg handles it in constant memory.
-
-**Why SQLite instead of PostgreSQL?**
-Single-instance deployment. SQLite is zero-config and perfectly adequate for concurrent reads with occasional writes. Swapping to PostgreSQL requires only changing the SQLAlchemy connection string.
-
-**Why a 4-step wizard instead of a single page?**
-Each step has a single long-running operation (upload, beat extraction, storyboard generation, render). Separating them into steps makes progress visible, errors recoverable, and the flow legible for first-time users.
-
----
-
-## Team
-
-Built at the Georgian College AI Hackathon, May 2026.
-
-- Full-stack pipeline, FAL integration, storyboard AI, FFmpeg render system
-- Beat-sync module (`easy-beat-sync-master`)
-- Music API integration and frontend UI
-
----
-
-*Built with FFmpeg, OpenAI, FAL Kling, Nano Banana (Google Gemini), Pixabay — architecture inspired by LTX-Video patterns.*
