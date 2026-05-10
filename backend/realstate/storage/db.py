@@ -120,11 +120,15 @@ def init_db() -> None:
     SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 
 
-def get_db() -> Generator[Session, None, None]:
+def get_sessionmaker() -> sessionmaker:
     if SessionLocal is None:
         init_db()
     assert SessionLocal is not None
-    db = SessionLocal()
+    return SessionLocal
+
+
+def get_db() -> Generator[Session, None, None]:
+    db = get_sessionmaker()()
     try:
         yield db
     finally:
