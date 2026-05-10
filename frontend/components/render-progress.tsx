@@ -13,9 +13,11 @@ interface Props {
   projectId: string;
   job: RenderJob;
   liveProgress?: number;
+  liveMessage?: string;
+  livePhase?: string;
 }
 
-export function RenderProgressCard({ projectId, job, liveProgress }: Props) {
+export function RenderProgressCard({ projectId, job, liveProgress, liveMessage, livePhase }: Props) {
   const progressPct = (liveProgress ?? job.progress) * 100;
   const isQueued = job.status === "pending";
   const isRunning = job.status === "running";
@@ -57,7 +59,7 @@ export function RenderProgressCard({ projectId, job, liveProgress }: Props) {
           </div>
           <div className="text-xs text-ink-subtle">
             {isQueued && "Queued"}
-            {isRunning && `${Math.round(progressPct)}% — encoding…`}
+            {isRunning && `${Math.round(progressPct)}% — ${liveMessage || "rendering…"}`}
             {isDone && "Ready"}
             {isError && "Failed"}
           </div>
@@ -72,7 +74,17 @@ export function RenderProgressCard({ projectId, job, liveProgress }: Props) {
       </div>
 
       {isActive && (
-        <div className="mt-4">
+        <div className="mt-4 space-y-2">
+          {(liveMessage || livePhase) && (
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="text-ink-muted truncate">{liveMessage || "Working…"}</span>
+              {livePhase && (
+                <span className="shrink-0 rounded-full bg-primary-50 px-2 py-0.5 font-medium text-primary-700">
+                  {livePhase}
+                </span>
+              )}
+            </div>
+          )}
           <Progress value={progressPct} />
         </div>
       )}
