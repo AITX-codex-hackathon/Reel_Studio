@@ -46,8 +46,8 @@ async def start_render(
         raise HTTPException(404, "Storyboard not found")
     storyboard = Storyboard(**sb_row.json)
 
-    template = _loader.get(storyboard.template_id)
-    if not template:
+    template = None if storyboard.template_id == "auto" else _loader.get(storyboard.template_id)
+    if storyboard.template_id != "auto" and not template:
         raise HTTPException(404, f"Template {storyboard.template_id} not found")
 
     pf = ProjectFiles()
@@ -134,8 +134,8 @@ async def _run_render(
     scratch: Path,
 ) -> None:
     """Background render task. Updates DB row + pushes WS progress."""
-    template = _loader.get(template_id)
-    if not template:
+    template = None if template_id == "auto" else _loader.get(template_id)
+    if template_id != "auto" and not template:
         log.error("Template %s vanished mid-render", template_id)
         return
 
