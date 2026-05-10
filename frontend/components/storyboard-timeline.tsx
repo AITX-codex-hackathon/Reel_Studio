@@ -1,8 +1,10 @@
 "use client";
 
-import { Sparkles, AlertTriangle, Wand2 } from "lucide-react";
+import { useCallback, useState } from "react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Sparkles, Wand2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { Storyboard, Upload } from "@/lib/api";
 import { api } from "@/lib/api";
 import { cn, formatSeconds } from "@/lib/utils";
@@ -10,17 +12,49 @@ import { cn, formatSeconds } from "@/lib/utils";
 interface Props {
   storyboard: Storyboard;
   uploads: Upload[];
+  onUpdate?: (updated: Storyboard) => void;
 }
 
-export function StoryboardTimeline({ storyboard, uploads }: Props) {
+export function StoryboardTimeline({ storyboard, uploads, onUpdate }: Props) {
+  const [shots, setShots] = useState(storyboard.shots);
+  const [saving, setSaving] = useState(false);
+
   const uploadById = new Map(uploads.map((u) => [u.id, u]));
 
+  const swap = useCallback(
+    async (i: number, j: number) => {
+      const next = [...shots];
+      [next[i], next[j]] = [next[j], next[i]];
+
+      // Recalculate start times
+      let cursor = 0;
+      const resequenced = next.map((s) => {
+        const updated = { ...s, start_time_sec: cursor };
+        cursor += s.duration_sec;
+        return updated;
+      });
+
+      setShots(resequenced);
+      setSaving(true);
+      try {
+        const updated: Storyboard = { ...storyboard, shots: resequenced };
+        const saved = await api.saveStoryboard(storyboard.project_id, updated);
+        onUpdate?.(saved);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [shots, storyboard, onUpdate],
+  );
+
+  const totalDuration = shots.reduce((sum, s) => sum + s.duration_sec, 0);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Summary bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Stat label="Duration" value={formatSeconds(storyboard.total_duration_sec)} />
-        <Stat label="Shots" value={String(storyboard.shots.length)} />
+        <Stat label="Duration" value={formatSeconds(totalDuration)} />
+        <Stat label="Shots" value={String(shots.length)} />
         <Stat
           label="Generated"
           value={String(storyboard.generated_slot_ids.length)}
@@ -43,75 +77,93 @@ export function StoryboardTimeline({ storyboard, uploads }: Props) {
               {storyboard.unfilled_slot_ids.length === 1 ? "" : "s"} couldn't be filled
             </p>
             <p className="text-amber-800/80 mt-0.5">
-              Either upload more matching photos or enable a generative provider
-              (set <code className="bg-amber-100 px-1 rounded">GEMINI_API_KEY</code> for Nano Banana Pro).
+              Upload more matching photos or enable a generative provider.
             </p>
           </div>
         </div>
       )}
 
-      {/* Notes */}
       {storyboard.notes && (
         <p className="text-sm text-ink-muted italic">{storyboard.notes}</p>
       )}
 
-      {/* Timeline */}
-      <div className="space-y-2">
-        {storyboard.shots.map((shot, i) => {
-          const upload = shot.source_upload_id
-            ? uploadById.get(shot.source_upload_id)
-            : null;
-          const imgUrl = upload
-            ? api.uploadFileUrl(upload.id)
-            : null; // generated images live on backend disk; we don't expose them by URL in v1
-          return (
-            <div
-              key={shot.slot_id + i}
-              className="flex items-stretch gap-3 rounded-xl border border-border/60 bg-white p-2 hover:border-primary-200 transition-colors"
-            >
-              <div className="w-10 text-center font-display font-semibold text-ink-subtle pt-2">
-                {i + 1}
-              </div>
+      {saving && (
+        <p className="text-xs text-ink-muted">Saving order…</p>
+      )}
+
+      {/* Horizontal scrollable strip */}
+      <div className="overflow-x-auto pb-2">
+        <div className="flex gap-3 min-w-max">
+          {shots.map((shot, i) => {
+            const upload = shot.source_upload_id
+              ? uploadById.get(shot.source_upload_id)
+              : null;
+            const imgUrl = upload ? api.uploadFileUrl(upload.id) : null;
+
+            return (
               <div
-                className={cn(
-                  "w-24 h-16 rounded-lg overflow-hidden flex items-center justify-center bg-gradient-soft border border-border/40 shrink-0",
-                )}
+                key={shot.slot_id + i}
+                className="flex flex-col items-center gap-1 w-36 shrink-0"
               >
-                {imgUrl ? (
-                  <img
-                    src={imgUrl}
-                    className="w-full h-full object-cover"
-                    alt={shot.slot_id}
-                    loading="lazy"
-                  />
-                ) : (
-                  <Sparkles className="w-5 h-5 text-primary/50" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0 py-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-sm">{shot.slot_id}</span>
-                  {shot.is_generated && (
-                    <Badge variant="accent" className="text-[10px]">
-                      <Wand2 className="w-2.5 h-2.5" /> AI
-                    </Badge>
+                {/* Thumbnail card */}
+                <div className="relative w-36 h-48 rounded-xl overflow-hidden border border-border/60 bg-gradient-soft flex items-center justify-center">
+                  {imgUrl ? (
+                    <img
+                      src={imgUrl}
+                      className="w-full h-full object-cover"
+                      alt={shot.slot_id}
+                      loading="lazy"
+                    />
+                  ) : (
+                    <Sparkles className="w-6 h-6 text-primary/40" />
                   )}
+                  {/* Shot number badge */}
+                  <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-black/60 text-white text-xs font-bold flex items-center justify-center">
+                    {i + 1}
+                  </div>
+                  {shot.is_generated && (
+                    <div className="absolute top-2 right-2">
+                      <Badge variant="accent" className="text-[10px] px-1.5">
+                        <Wand2 className="w-2.5 h-2.5" /> AI
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+
+                {/* Metadata */}
+                <div className="w-full space-y-0.5 text-center">
+                  <p className="text-xs font-medium truncate text-ink">{shot.slot_id}</p>
+                  <p className="text-[11px] text-ink-subtle">{shot.duration_sec.toFixed(1)}s</p>
                   <Badge variant="muted" className="text-[10px]">
                     {shot.motion}
                   </Badge>
-                  {shot.text_overlay_id && shot.rendered_text_overlay && (
-                    <Badge variant="default" className="text-[10px]">
-                      “{shot.rendered_text_overlay.slice(0, 30)}{shot.rendered_text_overlay.length > 30 ? "…" : ""}”
-                    </Badge>
-                  )}
                 </div>
-                <div className="text-xs text-ink-subtle mt-1">
-                  {formatSeconds(shot.start_time_sec)} → {formatSeconds(shot.start_time_sec + shot.duration_sec)} · {shot.duration_sec.toFixed(1)}s · {shot.transition_in}
+
+                {/* Swap buttons */}
+                <div className="flex gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className={cn("w-7 h-7", i === 0 && "invisible")}
+                    disabled={i === 0 || saving}
+                    onClick={() => swap(i, i - 1)}
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className={cn("w-7 h-7", i === shots.length - 1 && "invisible")}
+                    disabled={i === shots.length - 1 || saving}
+                    onClick={() => swap(i, i + 1)}
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
