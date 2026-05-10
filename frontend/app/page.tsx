@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { ArrowRight, Film, Plus, Sparkles, Wand2 } from "lucide-react";
+import { ArrowRight, Film, Loader2, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -73,6 +73,7 @@ function HeroBackground() {
 export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -81,6 +82,23 @@ export default function DashboardPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  const onDeleteProject = async (project: Project) => {
+    const confirmed = window.confirm(
+      `Delete "${project.name}"? This will remove the project from the dashboard.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingProjectId(project.id);
+    try {
+      await api.deleteProject(project.id);
+      setProjects((current) => current.filter((p) => p.id !== project.id));
+    } catch (error) {
+      alert(`Failed to delete project: ${error instanceof Error ? error.message : error}`);
+    } finally {
+      setDeletingProjectId(null);
+    }
+  };
 
   return (
     <div>
@@ -154,37 +172,55 @@ export default function DashboardPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {projects.map((p, i) => (
-                <Link key={p.id} href={`/projects/${p.id}`} className="group">
-                  <Card className="overflow-hidden hover:shadow-brand-soft hover:-translate-y-1 transition-all duration-300">
-                    <div className="aspect-video relative overflow-hidden">
-                      <Image
-                        src={SHOWCASE_IMAGES[i % SHOWCASE_IMAGES.length]}
-                        alt={p.name}
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-[#14141f] via-transparent to-transparent" />
-                      <div className="absolute bottom-3 left-3">
-                        <div className="flex flex-wrap gap-1.5">
-                          {p.template_id && <Badge variant="default">{p.template_id}</Badge>}
-                          {p.storyboard_id ? (
-                            <Badge variant="success">storyboard ready</Badge>
-                          ) : (
-                            <Badge variant="muted">draft</Badge>
-                          )}
+                <div key={p.id} className="group relative">
+                  <Link href={`/projects/${p.id}`} className="block">
+                    <Card className="overflow-hidden hover:shadow-brand-soft hover:-translate-y-1 transition-all duration-300">
+                      <div className="aspect-video relative overflow-hidden">
+                        <Image
+                          src={SHOWCASE_IMAGES[i % SHOWCASE_IMAGES.length]}
+                          alt={p.name}
+                          fill
+                          className="object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#14141f] via-transparent to-transparent" />
+                        <div className="absolute bottom-3 left-3">
+                          <div className="flex flex-wrap gap-1.5">
+                            {p.template_id && <Badge variant="default">{p.template_id}</Badge>}
+                            {p.storyboard_id ? (
+                              <Badge variant="success">storyboard ready</Badge>
+                            ) : (
+                              <Badge variant="muted">draft</Badge>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="line-clamp-1 group-hover:text-accent-400 transition-colors text-white">
-                        {p.name}
-                      </CardTitle>
-                      <CardDescription className="line-clamp-1 text-ink-muted">
-                        {p.address || "No address yet"}
-                      </CardDescription>
-                    </CardHeader>
-                  </Card>
-                </Link>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="line-clamp-1 group-hover:text-accent-400 transition-colors text-white">
+                          {p.name}
+                        </CardTitle>
+                        <CardDescription className="line-clamp-1 text-ink-muted">
+                          {p.address || "No address yet"}
+                        </CardDescription>
+                      </CardHeader>
+                    </Card>
+                  </Link>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Delete ${p.name}`}
+                    title="Delete project"
+                    disabled={deletingProjectId === p.id}
+                    onClick={() => onDeleteProject(p)}
+                    className="absolute right-3 top-3 z-10 h-9 w-9 rounded-full border border-red-500/30 bg-[#14141f]/80 text-red-300 opacity-0 shadow-sm backdrop-blur hover:bg-red-500/20 hover:text-red-100 focus:opacity-100 group-hover:opacity-100"
+                  >
+                    {deletingProjectId === p.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               ))}
             </div>
           )}
