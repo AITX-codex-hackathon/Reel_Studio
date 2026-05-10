@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/AuthContext";
 import { Sparkles } from "lucide-react";
-import { auth, googleProvider } from "@/lib/firebase";
+import { auth, googleProvider, isFirebaseConfigured } from "@/lib/firebase";
 import { 
   signInWithPopup, 
   signInWithEmailAndPassword, 
@@ -27,9 +27,16 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  const FIREBASE_NOT_CONFIGURED =
+    "Firebase isn't configured. Add NEXT_PUBLIC_FIREBASE_* keys to frontend/.env.local to enable sign-in.";
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (!auth) {
+      setError(FIREBASE_NOT_CONFIGURED);
+      return;
+    }
     setIsLoading(true);
     try {
       if (isSignUp) {
@@ -48,13 +55,17 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
 
   const handleGoogleSignIn = async () => {
     setError(null);
+    if (!auth || !googleProvider) {
+      setError(FIREBASE_NOT_CONFIGURED);
+      return;
+    }
     setIsLoading(true);
     try {
       const userCred = await signInWithPopup(auth, googleProvider);
-      login({ 
-        id: userCred.user.uid, 
-        name: userCred.user.displayName || "Google User", 
-        email: userCred.user.email || "" 
+      login({
+        id: userCred.user.uid,
+        name: userCred.user.displayName || "Google User",
+        email: userCred.user.email || "",
       });
     } catch (err: any) {
       setError(err.message || "Google sign-in failed");
@@ -65,6 +76,10 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
 
   const handleGuestSignIn = async () => {
     setError(null);
+    if (!auth) {
+      setError(FIREBASE_NOT_CONFIGURED);
+      return;
+    }
     setIsLoading(true);
     try {
       const userCred = await signInAnonymously(auth);

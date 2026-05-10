@@ -29,6 +29,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   useEffect(() => {
+    if (!auth) {
+      // Firebase isn't configured — skip auth state subscription. The login
+      // dialog will still open on requireAuth() and the local login() flow
+      // will set the user from whatever state path the dialog uses.
+      setLoading(false);
+      return;
+    }
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         setUser({
@@ -58,7 +65,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await signOut(auth);
+    if (auth) {
+      await signOut(auth);
+    }
     setUser(null);
   };
 
