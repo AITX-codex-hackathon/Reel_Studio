@@ -1,7 +1,7 @@
 [project]
-name = "reelstate"
+name = "reelstudio"
 version = "0.1.0"
-description = "AI-powered real estate reel generator"
+description = "AI-powered real estate project generator — ReelStudio"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115",

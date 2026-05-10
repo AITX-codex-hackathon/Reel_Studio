@@ -29,21 +29,21 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-log = logging.getLogger("reelstate")
+log = logging.getLogger("reelstudio")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    log.info("Reelstate API starting")
+    log.info("ReelStudio API starting")
     yield
-    log.info("Reelstate API stopping")
+    log.info("ReelStudio API stopping")
 
 
 settings = get_settings()
 app = FastAPI(
-    title="Reelstate API",
-    description="AI-powered real estate reel generator",
+    title="ReelStudio API",
+    description="AI-powered real estate project generator",
     version="0.1.0",
     lifespan=lifespan,
 )

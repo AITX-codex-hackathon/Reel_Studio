@@ -1,4 +1,4 @@
-# Reelstate — AI Reel Generator for Real Estate
+# ReelStudio — AI Project Generator for Real Estate
 
 An AI-powered platform that takes 50–150 property photos and produces a ~1-minute cinematic reel for Instagram. Built for AutoHDR's video team to replace manual editing with reproducible, template-driven generation.
 
