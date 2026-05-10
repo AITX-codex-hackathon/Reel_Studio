@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import os
 import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
@@ -21,7 +22,7 @@ from .storage.filesystem import ProjectFiles
 
 log = logging.getLogger(__name__)
 
-_CLIP_DURATION_SEC = 5.0  # fixed until beat-analysis module is wired in
+_DEFAULT_CLIP_DURATION_SEC = 2.4
 TelemetryCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 
@@ -124,6 +125,8 @@ class StoryboardBuilder:
         ordered_slots = [slot_by_id[slot_id] for slot_id in match.slot_order if slot_id in slot_by_id]
         ordered_slots.extend(slot for slot in template.shot_slots if slot.slot_id not in {s.slot_id for s in ordered_slots})
         ordered_slots = _adapt_slots_to_upload_count(ordered_slots, len(curated_analyzed))
+        style_overrides = _diversify_camera_work_for_order(ordered_slots, match.style_overrides)
+        ordered_slots = _apply_agent_timing_overrides(ordered_slots, style_overrides, beat_timestamps_ms)
         await _emit(
             telemetry,
             stage="storyboard",
@@ -163,11 +166,24 @@ class StoryboardBuilder:
 
             timing = timing_by_slot.get(slot.slot_id)
             duration_sec = _clip_duration(timing.duration_sec if timing else slot.duration_sec)
-            override = match.style_overrides.get(slot.slot_id, {})
+            override = style_overrides.get(slot.slot_id, {})
             scene_purpose = str(override.get("scene_purpose") or "").strip()
             beat_plan = str(override.get("beat_plan") or "").strip()
             masking_plan = str(override.get("masking_plan") or "").strip()
             transition_plan = str(override.get("transition_plan") or "").strip()
+            ingress_seam = str(override.get("ingress_seam") or "").strip()
+            egress_seam = str(override.get("egress_seam") or "").strip()
+            shared_anchors_to_next = _clean_string_list(override.get("shared_anchors_to_next"), limit=140, max_items=5)
+            bridge_instructions = str(override.get("bridge_instructions") or "").strip()
+            bridge_strategy = _clean_bridge_strategy(override.get("bridge_strategy"))
+            transition_logic = _clean_transition_logic(override.get("transition_logic"))
+            if not bridge_strategy and transition_logic:
+                bridge_strategy = _clean_bridge_strategy(transition_logic.get("strategy"))
+            ramp_profile = _clean_ramp_profile(override.get("ramp_profile"))
+            visual_distance_score = _clean_float(override.get("visual_distance_score"), minimum=1.0, maximum=10.0)
+            bridge_duration_sec = _clean_float(override.get("bridge_duration_sec"), minimum=1.5, maximum=4.0)
+            velocity_vector = _clean_prompt_text(override.get("velocity_vector"), 180)
+            movement_intensity = _clean_movement_intensity(override.get("movement_intensity"))
             continuity_notes = str(override.get("continuity_notes") or "").strip()
             style_notes = str(override.get("style_notes") or "").strip()
             rubric_plan = _clean_rubric_plan(override.get("rubric_plan") or override.get("rubric"))
@@ -179,6 +195,12 @@ class StoryboardBuilder:
                     scene_purpose,
                     style_notes,
                     transition_plan,
+                    ingress_seam,
+                    egress_seam,
+                    bridge_instructions,
+                    _transition_logic_text(transition_logic),
+                    ramp_profile or "",
+                    velocity_vector,
                     _rubric_text(rubric_plan),
                     creative_brief.visual_theme,
                 ]
@@ -206,6 +228,8 @@ class StoryboardBuilder:
                 beat_plan=beat_plan,
                 masking_plan=masking_plan,
                 transition_plan=transition_plan,
+                transition_logic=_transition_logic_text(transition_logic),
+                ramp_profile=ramp_profile or "",
                 continuity_notes=continuity_notes,
                 rubric_plan=rubric_plan,
                 music_context=music_context,
@@ -236,6 +260,17 @@ class StoryboardBuilder:
                     beat_plan=beat_plan or None,
                     masking_plan=masking_plan or None,
                     transition_plan=transition_plan or None,
+                    ingress_seam=ingress_seam or None,
+                    egress_seam=egress_seam or None,
+                    shared_anchors_to_next=shared_anchors_to_next,
+                    bridge_instructions=bridge_instructions or None,
+                    bridge_strategy=bridge_strategy,
+                    transition_logic=transition_logic or None,
+                    ramp_profile=ramp_profile,
+                    visual_distance_score=visual_distance_score,
+                    bridge_duration_sec=bridge_duration_sec,
+                    velocity_vector=velocity_vector or None,
+                    movement_intensity=movement_intensity,
                     continuity_notes=continuity_notes or None,
                     rubric_plan=rubric_plan or None,
                     style_recipe_prompt=style_recipe_prompt,
@@ -263,7 +298,7 @@ class StoryboardBuilder:
             creative_brief=creative_brief,
             total_duration_sec=total,
             aspect_ratio=template.aspect_ratio,
-            beat_timestamps=[ms / 1000 for ms in (beat_timestamps_ms or [])],
+            beat_timestamps=_storyboard_cut_grid(beat_timestamps_ms, shots),
             generated_slot_ids=[s.slot_id for s in shots if s.is_generated],
             unfilled_slot_ids=list(match.unfilled),
             selected_upload_ids=selected_ids,
@@ -367,9 +402,12 @@ class StoryboardBuilder:
         ordered_slots.extend(
             slot for slot in auto_template.shot_slots if slot.slot_id not in {s.slot_id for s in ordered_slots}
         )
+        style_overrides = _diversify_camera_work_for_order(ordered_slots, match.style_overrides)
+        ordered_slots = _apply_agent_timing_overrides(ordered_slots, style_overrides, beat_timestamps_ms)
         ordered_template = auto_template.model_copy(update={"shot_slots": ordered_slots})
         timings = self.scheduler.schedule(
             ordered_template,
+            str(Path(music.audio_path)) if music else None,
             beat_timestamps_ms=beat_timestamps_ms,
         )
         timing_by_slot = {t.slot_id: t for t in timings}
@@ -387,11 +425,24 @@ class StoryboardBuilder:
             room_type = analysis.room_type or slot.room_type or "detail"
             timing = timing_by_slot.get(slot.slot_id)
             duration_sec = _clip_duration(timing.duration_sec if timing else slot.duration_sec)
-            override = match.style_overrides.get(slot.slot_id, {})
+            override = style_overrides.get(slot.slot_id, {})
             scene_purpose = str(override.get("scene_purpose") or "").strip()
             beat_plan = str(override.get("beat_plan") or "").strip()
             masking_plan = str(override.get("masking_plan") or "").strip()
             transition_plan = str(override.get("transition_plan") or "").strip()
+            ingress_seam = str(override.get("ingress_seam") or "").strip()
+            egress_seam = str(override.get("egress_seam") or "").strip()
+            shared_anchors_to_next = _clean_string_list(override.get("shared_anchors_to_next"), limit=140, max_items=5)
+            bridge_instructions = str(override.get("bridge_instructions") or "").strip()
+            bridge_strategy = _clean_bridge_strategy(override.get("bridge_strategy"))
+            transition_logic = _clean_transition_logic(override.get("transition_logic"))
+            if not bridge_strategy and transition_logic:
+                bridge_strategy = _clean_bridge_strategy(transition_logic.get("strategy"))
+            ramp_profile = _clean_ramp_profile(override.get("ramp_profile"))
+            visual_distance_score = _clean_float(override.get("visual_distance_score"), minimum=1.0, maximum=10.0)
+            bridge_duration_sec = _clean_float(override.get("bridge_duration_sec"), minimum=1.5, maximum=4.0)
+            velocity_vector = _clean_prompt_text(override.get("velocity_vector"), 180)
+            movement_intensity = _clean_movement_intensity(override.get("movement_intensity"))
             continuity_notes = str(override.get("continuity_notes") or "").strip()
             style_notes = str(override.get("style_notes") or "").strip()
             rubric_plan = _clean_rubric_plan(override.get("rubric_plan") or override.get("rubric"))
@@ -403,6 +454,12 @@ class StoryboardBuilder:
                     scene_purpose,
                     style_notes,
                     transition_plan,
+                    ingress_seam,
+                    egress_seam,
+                    bridge_instructions,
+                    _transition_logic_text(transition_logic),
+                    ramp_profile or "",
+                    velocity_vector,
                     _rubric_text(rubric_plan),
                     creative_brief.visual_theme,
                 ]
@@ -421,6 +478,8 @@ class StoryboardBuilder:
                 beat_plan=beat_plan,
                 masking_plan=masking_plan,
                 transition_plan=transition_plan,
+                transition_logic=_transition_logic_text(transition_logic),
+                ramp_profile=ramp_profile or "",
                 continuity_notes=continuity_notes,
                 rubric_plan=rubric_plan,
                 music_context=curation_context,
@@ -448,6 +507,17 @@ class StoryboardBuilder:
                     beat_plan=beat_plan or None,
                     masking_plan=masking_plan or None,
                     transition_plan=transition_plan or None,
+                    ingress_seam=ingress_seam or None,
+                    egress_seam=egress_seam or None,
+                    shared_anchors_to_next=shared_anchors_to_next,
+                    bridge_instructions=bridge_instructions or None,
+                    bridge_strategy=bridge_strategy,
+                    transition_logic=transition_logic or None,
+                    ramp_profile=ramp_profile,
+                    visual_distance_score=visual_distance_score,
+                    bridge_duration_sec=bridge_duration_sec,
+                    velocity_vector=velocity_vector or None,
+                    movement_intensity=movement_intensity,
                     continuity_notes=continuity_notes or None,
                     rubric_plan=rubric_plan or None,
                     style_recipe_prompt=style_recipe_prompt,
@@ -476,7 +546,7 @@ class StoryboardBuilder:
             creative_brief=creative_brief,
             total_duration_sec=total,
             aspect_ratio="9:16",
-            beat_timestamps=[ms / 1000 for ms in (beat_timestamps_ms or [])],
+            beat_timestamps=_storyboard_cut_grid(beat_timestamps_ms, shots),
             generated_slot_ids=[],
             unfilled_slot_ids=list(match.unfilled),
             selected_upload_ids=selected_ids,
@@ -492,10 +562,25 @@ class StoryboardBuilder:
         telemetry: Optional[TelemetryCallback] = None,
     ) -> list[AnalyzedUpload]:
         self.last_analyses_by_upload_id = {}
-        semaphore = asyncio.Semaphore(4)
+        concurrency = _storyboard_analysis_concurrency()
+        semaphore = asyncio.Semaphore(concurrency)
         completed = 0
         total = len(uploads)
         lock = asyncio.Lock()
+
+        if total:
+            await _emit(
+                telemetry,
+                stage="storyboard",
+                message=(
+                    f"Analyzing {total} photo{'s' if total != 1 else ''} with AI vision "
+                    f"at concurrency {concurrency}."
+                ),
+                progress=0.09,
+                detail={
+                    "analysis_concurrency": concurrency,
+                },
+            )
 
         async def analyze_one(item: tuple[str, Path, Optional[ImageAnalysisResult]]) -> AnalyzedUpload:
             nonlocal completed
@@ -506,12 +591,14 @@ class StoryboardBuilder:
             self.last_analyses_by_upload_id[upload_id] = cached
             async with lock:
                 completed += 1
+                source = str(cached.raw.get("source") or "analysis").replace("_", " ")
                 await _emit(
                     telemetry,
                     stage="storyboard",
                     message=(
                         f"Analyzed photo {completed} of {total}: "
-                        f"{cached.room_type.replace('_', ' ')}, {cached.framing}, quality {cached.quality_score:.2f}."
+                        f"{cached.room_type.replace('_', ' ')}, {cached.framing}, quality {cached.quality_score:.2f}"
+                        f" ({source})."
                     ),
                     progress=0.10 + 0.45 * (completed / max(total, 1)),
                     detail={
@@ -519,6 +606,7 @@ class StoryboardBuilder:
                         "total": total,
                         "upload_id": upload_id,
                         "room_type": cached.room_type,
+                        "analysis_source": cached.raw.get("source"),
                     },
                 )
             return AnalyzedUpload(upload_id=upload_id, image_path=str(path), analysis=cached)
@@ -594,7 +682,7 @@ def _auto_template_from_uploads(project: Project, uploads: list[AnalyzedUpload])
                     "source-safe mask strategy, and beat relationship."
                 ),
                 room_type=room_type,
-                duration_sec=_CLIP_DURATION_SEC,
+                duration_sec=_default_clip_duration(index=index),
                 motion=MotionPreset(motion_value),
                 motion_strength=0.48,
                 transition_in=TransitionType.CUT if index == 0 else TransitionType.DISSOLVE,
@@ -611,7 +699,7 @@ def _auto_template_from_uploads(project: Project, uploads: list[AnalyzedUpload])
             "the editor agent may reorder scenes and write cinematic prompts, but must preserve source truth."
         ),
         author="EstateReelMaker",
-        target_duration_sec=max(_CLIP_DURATION_SEC, len(slots) * _CLIP_DURATION_SEC),
+        target_duration_sec=_auto_reel_target_duration(len(slots)),
         aspect_ratio="9:16",
         pacing_mode=PacingMode.FREE,
         shot_slots=slots,
@@ -672,12 +760,365 @@ def _adapt_slots_to_upload_count(slots: list, upload_count: int) -> list:
     return [slots[i] for i in indexes[:target]]
 
 
+def _apply_agent_timing_overrides(
+    slots: list[ShotSlot],
+    style_overrides: dict[str, dict[str, Any]],
+    beat_timestamps_ms: Optional[list[int]],
+) -> list[ShotSlot]:
+    beat_sec = _average_beat_sec(beat_timestamps_ms)
+    out: list[ShotSlot] = []
+    for index, slot in enumerate(slots):
+        override = style_overrides.get(slot.slot_id, {})
+        duration = slot.duration_sec
+        duration_beats = _clean_int(override.get("duration_beats"), minimum=2, maximum=10)
+        if duration_beats and beat_sec:
+            duration = duration_beats * beat_sec
+        elif duration_beats:
+            duration = duration_beats * 0.5
+        elif slot.duration_sec <= 0:
+            duration = _default_clip_duration(index=index)
+        out.append(slot.model_copy(update={"duration_sec": _clip_duration(duration)}))
+    return out
+
+
+def _diversify_camera_work_for_order(
+    slots: list[ShotSlot],
+    style_overrides: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Give each ordered scene a distinct camera lane before provider prompting."""
+    if not _env_flag("CAMERA_DIVERSITY_ENABLED", default=True):
+        return style_overrides
+
+    out: dict[str, dict[str, Any]] = {
+        slot_id: dict(override)
+        for slot_id, override in style_overrides.items()
+        if isinstance(override, dict)
+    }
+    recent_families: list[str] = []
+    used_counts: dict[str, int] = {}
+    total = max(1, len(slots))
+
+    for index, slot in enumerate(slots):
+        override = dict(out.get(slot.slot_id, {}))
+        variation = _camera_variation_for_slot(
+            index=index,
+            slot=slot,
+            recent_families=recent_families,
+            used_counts=used_counts,
+            total=total,
+        )
+        family = variation["family"]
+        recent_families.append(family)
+        recent_families = recent_families[-2:]
+        used_counts[family] = used_counts.get(family, 0) + 1
+
+        existing_notes = _clean_prompt_text(override.get("style_notes"), 1900)
+        diversity_line = (
+            f"Camera variation lock: {variation['lead']} "
+            "Cut at the chosen audio beat; do not repeat the previous shot's camera direction."
+        )
+        override["style_notes"] = _clean_prompt_text(
+            f"{diversity_line} {existing_notes}".strip(),
+            2200,
+        )
+        override["motion"] = variation["motion"]
+        current_strength = _clean_float(override.get("motion_strength"), minimum=0.0, maximum=1.0) or 0.0
+        override["motion_strength"] = max(
+            current_strength,
+            float(variation["strength"]),
+        )
+        override["velocity_vector"] = variation["velocity"]
+        override["movement_intensity"] = variation["intensity"]
+        override.setdefault("ramp_profile", variation["ramp_profile"])
+        out[slot.slot_id] = override
+
+    return out
+
+
+def _camera_variation_for_slot(
+    *,
+    index: int,
+    slot: ShotSlot,
+    recent_families: list[str],
+    used_counts: dict[str, int],
+    total: int,
+) -> dict[str, Any]:
+    room = (slot.room_type or "").lower()
+    candidates = list(_CAMERA_VARIATIONS)
+    if index == 0:
+        candidates = [item for item in candidates if item["family"] in {"aerial_drop", "parallax_push", "pull_reveal"}]
+    elif index >= total - 2:
+        candidates = [item for item in candidates if item["family"] in {"pull_reveal", "tilt_up", "lateral_right", "parallax_push"}]
+    elif room in {"exterior", "backyard", "view"}:
+        candidates = [item for item in candidates if item["family"] in {"aerial_drop", "pull_reveal", "lateral_right", "tilt_down", "parallax_push"}]
+    elif room in {"detail", "bathroom"}:
+        candidates = [item for item in candidates if item["family"] in {"micro_orbit", "tilt_up", "lateral_left", "parallax_push"}]
+    elif room in {"kitchen", "living_room", "foyer", "bedroom"}:
+        candidates = [item for item in candidates if item["family"] in {"parallax_push", "lateral_left", "lateral_right", "tilt_up", "pull_reveal"}]
+
+    if not candidates:
+        candidates = list(_CAMERA_VARIATIONS)
+
+    def score(item: dict[str, Any]) -> tuple[int, int, int]:
+        family = item["family"]
+        recent_penalty = 4 if family in recent_families else 0
+        use_penalty = used_counts.get(family, 0)
+        rhythm = abs((index % len(_CAMERA_VARIATIONS)) - _CAMERA_VARIATION_INDEX[family])
+        return (recent_penalty + use_penalty * 2, rhythm, _CAMERA_VARIATION_INDEX[family])
+
+    return min(candidates, key=score)
+
+
+_CAMERA_VARIATIONS: list[dict[str, Any]] = [
+    {
+        "family": "aerial_drop",
+        "motion": MotionPreset.PUSH_IN.value,
+        "strength": 0.66,
+        "ramp_profile": "reveal",
+        "velocity": "elevated_forward_drop_35pct",
+        "intensity": "moderate",
+        "lead": "Begin with an elevated drone-like perspective, then descend/push toward the main entry or hero plane with visible parallax.",
+    },
+    {
+        "family": "parallax_push",
+        "motion": MotionPreset.PUSH_IN.value,
+        "strength": 0.62,
+        "ramp_profile": "reveal",
+        "velocity": "forward_dolly_35pct",
+        "intensity": "moderate",
+        "lead": "Parallax push-in from frame 0, with foreground edges moving faster than the room's stable architecture.",
+    },
+    {
+        "family": "lateral_left",
+        "motion": MotionPreset.PAN_LEFT.value,
+        "strength": 0.58,
+        "ramp_profile": "cruise",
+        "velocity": "lateral_truck_left_30pct",
+        "intensity": "calm",
+        "lead": "Lateral parallax slide left across a wall, window, counter, or furniture edge while the geometry stays stable.",
+    },
+    {
+        "family": "lateral_right",
+        "motion": MotionPreset.PAN_RIGHT.value,
+        "strength": 0.58,
+        "ramp_profile": "cruise",
+        "velocity": "lateral_truck_right_30pct",
+        "intensity": "calm",
+        "lead": "Lateral parallax slide right, letting depth shift sideways before landing cleanly on the beat.",
+    },
+    {
+        "family": "pull_reveal",
+        "motion": MotionPreset.PULL_OUT.value,
+        "strength": 0.56,
+        "ramp_profile": "impact",
+        "velocity": "reverse_dolly_reveal_25pct",
+        "intensity": "calm",
+        "lead": "Pull back from a detail or architectural anchor to reveal more of the room, then hold just long enough to cut.",
+    },
+    {
+        "family": "tilt_up",
+        "motion": MotionPreset.PAN_UP.value,
+        "strength": 0.52,
+        "ramp_profile": "cruise",
+        "velocity": "pedestal_tilt_up_25pct",
+        "intensity": "calm",
+        "lead": "Pedestal or tilt up through vertical lines, emphasizing height, windows, lighting, or ceiling scale.",
+    },
+    {
+        "family": "tilt_down",
+        "motion": MotionPreset.PAN_DOWN.value,
+        "strength": 0.52,
+        "ramp_profile": "cruise",
+        "velocity": "soft_tilt_down_25pct",
+        "intensity": "calm",
+        "lead": "Tilt down from ceiling, sky, or upper architecture toward the lived-in focal plane.",
+    },
+    {
+        "family": "micro_orbit",
+        "motion": MotionPreset.SLOW_ZOOM_IN.value,
+        "strength": 0.50,
+        "ramp_profile": "cruise",
+        "velocity": "subtle_orbit_parallax_20pct",
+        "intensity": "calm",
+        "lead": "Use a subtle orbit-like parallax around a fixed detail, keeping the source geometry grounded and premium.",
+    },
+]
+_CAMERA_VARIATION_INDEX = {
+    item["family"]: index
+    for index, item in enumerate(_CAMERA_VARIATIONS)
+}
+
+
 def _clip_duration(duration_sec: float) -> float:
-    return max(2.5, min(float(duration_sec), _CLIP_DURATION_SEC))
+    return max(_min_clip_duration(), min(float(duration_sec), _max_clip_duration()))
+
+
+def _default_clip_duration(index: int = 0) -> float:
+    # Tiny alternation keeps auto storyboards from feeling metronomic when no beat map exists.
+    base = _base_default_clip_duration()
+    return base + (0.25 if index % 5 == 0 else 0.0)
+
+
+def _base_default_clip_duration() -> float:
+    return _env_float("SNAPPY_DEFAULT_CLIP_SEC", _DEFAULT_CLIP_DURATION_SEC, minimum=1.5, maximum=4.0)
+
+
+def _min_clip_duration() -> float:
+    return _env_float("SNAPPY_MIN_SHOT_SEC", 1.35, minimum=0.75, maximum=3.0)
+
+
+def _max_clip_duration() -> float:
+    return _env_float("SNAPPY_MAX_SHOT_SEC", 3.4, minimum=_min_clip_duration(), maximum=6.0)
+
+
+def _auto_reel_target_duration(shot_count: int) -> float:
+    if shot_count <= 0:
+        return _default_clip_duration()
+    raw = shot_count * _base_default_clip_duration()
+    if shot_count >= 12:
+        return max(30.0, min(45.0, raw))
+    return max(_default_clip_duration(), min(30.0, raw))
+
+
+def _average_beat_sec(beat_timestamps_ms: Optional[list[int]]) -> Optional[float]:
+    times = [ms / 1000 for ms in (beat_timestamps_ms or []) if ms >= 0]
+    if len(times) < 2:
+        return None
+    intervals = [
+        b - a
+        for a, b in zip(times, times[1:])
+        if 0.2 <= b - a <= 2.0
+    ]
+    if not intervals:
+        return None
+    intervals.sort()
+    mid = len(intervals) // 2
+    return intervals[mid]
+
+
+def _storyboard_analysis_concurrency() -> int:
+    try:
+        value = int(os.getenv("STORYBOARD_ANALYSIS_CONCURRENCY", "8"))
+    except ValueError:
+        value = 8
+    return max(1, min(32, value))
+
+
+def _storyboard_cut_grid(beat_timestamps_ms: Optional[list[int]], shots: list[ResolvedShot]) -> list[float]:
+    """Expose both detected beats and chosen shot boundaries to the render snapper."""
+    values = {round(ms / 1000, 6) for ms in (beat_timestamps_ms or []) if ms >= 0}
+    cursor = 0.0
+    values.add(0.0)
+    for shot in shots:
+        values.add(round(cursor, 6))
+        cursor += max(0.0, float(shot.duration_sec))
+        values.add(round(cursor, 6))
+    return sorted(value for value in values if value >= 0.0)
+
+
+def _clean_int(value: Any, minimum: int, maximum: int) -> Optional[int]:
+    try:
+        return max(minimum, min(maximum, int(round(float(value)))))
+    except (TypeError, ValueError):
+        return None
+
+
+def _env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except ValueError:
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _clean_prompt_text(value: Any, limit: int) -> str:
     return " ".join(str(value or "").split())[:limit].strip()
+
+
+def _clean_string_list(value: Any, limit: int, max_items: int) -> list[str]:
+    if value is None:
+        return []
+    items = value if isinstance(value, list) else [value]
+    cleaned = [_clean_prompt_text(item, limit) for item in items]
+    return [item for item in cleaned if item][:max_items]
+
+
+def _clean_float(value: Any, minimum: float, maximum: float) -> Optional[float]:
+    try:
+        return max(minimum, min(maximum, float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _clean_bridge_strategy(value: Any) -> Optional[str]:
+    strategy = str(value or "").strip().lower()
+    allowed = {
+        "handshake",
+        "reveal",
+        "whip_pan",
+        "simple_cut",
+        "match_cut",
+        # Legacy technical values retained for saved storyboards.
+        "flfv_bridge",
+        "whip_pan_blur",
+        "dissolve",
+        "cut",
+        "skip",
+        "none",
+    }
+    return strategy if strategy in allowed else None
+
+
+def _clean_ramp_profile(value: Any) -> Optional[str]:
+    profile = str(value or "").strip().lower()
+    return profile if profile in {"cruise", "reveal", "impact"} else None
+
+
+def _clean_transition_logic(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    cleaned: dict[str, str] = {}
+    strategy = _clean_bridge_strategy(value.get("strategy"))
+    if strategy:
+        cleaned["strategy"] = strategy
+    spatial = str(value.get("spatial_continuity") or "").strip().lower()
+    if spatial in {"same_space", "adjacent_space", "shared_shape", "distant", "unrelated"}:
+        cleaned["spatial_continuity"] = spatial
+    technical = str(value.get("technical_execution") or "").strip().lower()
+    if technical in {"flfv_bridge", "speedramp_cut", "blur_slide", "clean_cut", "match_dissolve"}:
+        cleaned["technical_execution"] = technical
+    justification = _clean_prompt_text(value.get("justification"), 700)
+    risk_notes = _clean_prompt_text(value.get("risk_notes"), 700)
+    if justification:
+        cleaned["justification"] = justification
+    if risk_notes:
+        cleaned["risk_notes"] = risk_notes
+    return cleaned
+
+
+def _transition_logic_text(value: dict[str, str]) -> str:
+    if not value:
+        return ""
+    parts = [
+        f"transition strategy {value.get('strategy')}" if value.get("strategy") else "",
+        f"execution {value.get('technical_execution')}" if value.get("technical_execution") else "",
+        f"spatial continuity {value.get('spatial_continuity')}" if value.get("spatial_continuity") else "",
+        value.get("justification", ""),
+        value.get("risk_notes", ""),
+    ]
+    return " ".join(part for part in parts if part)
+
+
+def _clean_movement_intensity(value: Any) -> Optional[str]:
+    intensity = str(value or "").strip().lower()
+    return intensity if intensity in {"calm", "moderate", "fast"} else None
 
 
 def _clean_rubric_plan(value: Any) -> dict[str, Any]:
@@ -755,6 +1196,8 @@ def _style_recipe_prompt(
     beat_plan: str,
     masking_plan: str,
     transition_plan: str,
+    transition_logic: str,
+    ramp_profile: str,
     continuity_notes: str,
     rubric_plan: dict[str, Any],
     music_context: str,
@@ -773,14 +1216,10 @@ def _style_recipe_prompt(
         ]
 
     grounding = (
-        "Use the provided source image as the absolute visual truth: preserve the real architecture, "
-        "layout, room identity, materials, window placement, furniture, landscaping, and color palette. "
-        "Do not create new rooms, extra floors, impossible geometry, signage, text, people, logos, "
-        "watermarks, or distorted fixtures."
+        "Use high fidelity to the provided source image while allowing visible camera movement and temporal progression."
         if has_source_image
         else
-        "No source photo is available for this slot, so generate only a restrained real-estate bridge "
-        "shot that matches the property context. Avoid impossible architecture and avoid adding text."
+        "No source photo is available for this slot, so generate a restrained moving real-estate bridge shot that matches the property context."
     )
     continuity_rules = " ".join(
         f"Continuity rule: {rule}." for rule in creative_brief.continuity_rules if rule
@@ -790,10 +1229,9 @@ def _style_recipe_prompt(
         part
         for part in [
             FAL_SHOT_SOP,
-            "Premium cinematic real-estate reel shot.",
+            "Motion-first premium real-estate video shot. Visible camera movement from frame 0.",
             f"Binding concept: {creative_brief.concept_title}. {creative_brief.logline}",
-            f"Whole-reel visual theme: {creative_brief.visual_theme}",
-            f"Whole-reel emotional arc: {creative_brief.emotional_arc}",
+            f"Visual theme: {creative_brief.visual_theme}",
             f"Storyboard need: {slot_description}.",
             f"Scene purpose: {scene_purpose}." if scene_purpose else "",
             f"Grounded room/visual anchor: {room_type or 'property detail'}.",
@@ -803,15 +1241,14 @@ def _style_recipe_prompt(
             f"Beat plan: {beat_plan}" if beat_plan else "",
             f"Masking and holdout plan: {masking_plan}" if masking_plan else "",
             f"Transition plan: {transition_plan}" if transition_plan else "",
+            f"Director transition logic: {transition_logic}" if transition_logic else "",
+            f"Velocity ramp profile: {ramp_profile}" if ramp_profile else "",
             f"Continuity notes: {continuity_notes}" if continuity_notes else "",
-            f"Rubric scene plan: {_rubric_text(rubric_plan)}" if rubric_plan else "",
             continuity_rules,
             f"Music strategy: {creative_brief.music_strategy}" if creative_brief.music_strategy else "",
             f"Audio/editing context: {music_context}" if music_context else "",
             grounding,
-            "Make the motion smooth, expensive, calm, dramatic, and commercial. Favor controlled dolly, "
-            "slider, crane, parallax, soft light movement, natural reflections, subtle atmosphere, and "
-            "clean editorial timing over hype, whip-heavy, trap-style, or chaotic movement.",
+            "Make the motion smooth, expensive, calm, dramatic, and commercial. Do not let the clip read as a still image.",
         ]
         if part
     )

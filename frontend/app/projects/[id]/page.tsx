@@ -16,6 +16,7 @@ import {
   type ProjectMusic,
   type Project,
   type RenderJob,
+  type RenderPassType,
   type Storyboard,
   type Upload,
   type WorkflowSnapshotEvent,
@@ -152,13 +153,41 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (storyboard && storyboardDirty) {
         await onSaveStoryboard(storyboard);
       }
-      pushLocalEvent("render", `${passType === "draft" ? "Draft" : "Final"} render queued.`);
-      const job = await api.startRender(projectId, passType);
-      setRenders((rs) => [job, ...rs]);
+      pushLocalEvent("render", `${passType === "draft" ? "Horizontal draft" : "Horizontal final"} queued.`);
+      const horizontalJob = await api.startRender(projectId, passType);
+      setRenders((rs) => [horizontalJob, ...rs]);
       setStep("render");
+      if (passType === "final") {
+        try {
+          pushLocalEvent("render", "Instagram Reel queued in the background.");
+          const instagramJob = await api.startRender(projectId, "instagram_final");
+          setRenders((rs) => [instagramJob, ...rs]);
+        } catch (error) {
+          pushLocalEvent(
+            "render",
+            `Instagram Reel failed to queue: ${error instanceof Error ? error.message : error}`,
+            "failed",
+          );
+        }
+      }
     } catch (e) {
       pushLocalEvent("render", `Render failed to start: ${e instanceof Error ? e.message : e}`, "failed");
       alert(`Render failed to start: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+
+  const onInstagramRender = async () => {
+    try {
+      if (storyboard && storyboardDirty) {
+        await onSaveStoryboard(storyboard);
+      }
+      pushLocalEvent("render", "Instagram Reel queued.");
+      const job = await api.startRender(projectId, "instagram_final");
+      setRenders((rs) => [job, ...rs]);
+      setStep("render");
+    } catch (e) {
+      pushLocalEvent("render", `Instagram Reel failed to start: ${e instanceof Error ? e.message : e}`, "failed");
+      alert(`Instagram Reel failed to start: ${e instanceof Error ? e.message : e}`);
     }
   };
 
@@ -210,8 +239,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     );
   }
 
+  const horizontalRenders = renders.filter((render) => !isInstagramPass(render.pass_type));
+  const instagramRenders = renders.filter((render) => isInstagramPass(render.pass_type));
+
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-7xl px-6 pt-8 pb-10 space-y-8">
       {/* Header */}
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
@@ -361,7 +393,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           <CardHeader>
             <CardTitle>Renders</CardTitle>
             <CardDescription>
-              Drafts are 540p with a watermark. Finals are 1080p, ready for Instagram.
+              Horizontal renders appear first. Instagram Reel renders continue in the background and open in their own vertical preview.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -370,27 +402,85 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 <Sparkles className="w-4 h-4" /> New draft
               </Button>
               <Button onClick={() => onRender("final")}>New final render</Button>
+              <Button variant="outline" onClick={onInstagramRender}>New Instagram Reel</Button>
             </div>
             {renders.length === 0 ? (
               <p className="text-sm text-ink-muted">No renders yet — start one above.</p>
             ) : (
-              <div className="space-y-3">
-                {renders.map((r) => (
-                  <RenderProgressCard
-                    key={r.id}
-                    projectId={projectId}
-                    job={r}
-                    liveProgress={liveProgress[r.id]}
-                    liveMessage={renderMessages[r.id]}
-                    livePhase={renderPhases[r.id]}
-                  />
-                ))}
+              <div className="space-y-6">
+                <RenderGroup
+                  title="Horizontal Video"
+                  description="Main 16:9 render shown as soon as it finishes."
+                  projectId={projectId}
+                  renders={horizontalRenders}
+                  liveProgress={liveProgress}
+                  renderMessages={renderMessages}
+                  renderPhases={renderPhases}
+                />
+                <RenderGroup
+                  title="Instagram Reel"
+                  description="Separate 9:16 vertical version; it can keep processing while you review the horizontal video."
+                  projectId={projectId}
+                  renders={instagramRenders}
+                  liveProgress={liveProgress}
+                  renderMessages={renderMessages}
+                  renderPhases={renderPhases}
+                />
               </div>
             )}
           </CardContent>
         </Card>
       )}
     </div>
+  );
+}
+
+function isInstagramPass(passType: RenderPassType) {
+  return passType.startsWith("instagram_");
+}
+
+function RenderGroup({
+  title,
+  description,
+  projectId,
+  renders,
+  liveProgress,
+  renderMessages,
+  renderPhases,
+}: {
+  title: string;
+  description: string;
+  projectId: string;
+  renders: RenderJob[];
+  liveProgress: Record<string, number>;
+  renderMessages: Record<string, string>;
+  renderPhases: Record<string, string>;
+}) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold text-ink">{title}</h3>
+        <p className="text-xs text-ink-subtle">{description}</p>
+      </div>
+      {renders.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border/70 px-4 py-5 text-sm text-ink-muted">
+          No {title.toLowerCase()} yet.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {renders.map((render) => (
+            <RenderProgressCard
+              key={render.id}
+              projectId={projectId}
+              job={render}
+              liveProgress={liveProgress[render.id]}
+              liveMessage={renderMessages[render.id]}
+              livePhase={renderPhases[render.id]}
+            />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -448,8 +538,8 @@ function Stepper({
               isCurrent
                 ? "border-primary bg-gradient-soft shadow-brand-soft"
                 : isUnlocked
-                  ? "border-border/60 bg-white hover:border-primary-200"
-                  : "border-border/40 bg-white/40 opacity-50 cursor-not-allowed",
+                  ? "border-white/[0.08] bg-surface hover:border-primary-400/40 hover:bg-white/[0.04]"
+                  : "border-white/[0.04] bg-white/[0.02] opacity-50 cursor-not-allowed",
             )}
           >
             <div className="flex items-center gap-2">
@@ -457,10 +547,10 @@ function Stepper({
                 className={cn(
                   "w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold",
                   it.done
-                    ? "bg-emerald-100 text-emerald-700"
+                    ? "bg-emerald-900/40 text-emerald-300"
                     : isCurrent
                       ? "bg-gradient-brand text-white"
-                      : "bg-primary-100 text-primary-700",
+                      : "bg-primary-100 text-primary-300",
                 )}
               >
                 {it.done ? <Check className="w-3.5 h-3.5" /> : i + 1}
@@ -478,7 +568,7 @@ function WorkflowTelemetry({ events }: { events: WorkflowEvent[] }) {
   if (events.length === 0) return null;
   const latest = events[0];
   return (
-    <div className="rounded-2xl border border-primary-100 bg-white px-4 py-3 shadow-sm">
+    <div className="rounded-2xl border border-white/[0.06] bg-surface px-4 py-3">
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl bg-primary-50 text-primary-700">
           {latest.status === "running" || latest.status === "queued" ? (

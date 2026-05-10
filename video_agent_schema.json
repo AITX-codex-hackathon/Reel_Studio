@@ -1,0 +1,3360 @@
+{
+  "schema_version": "1.0",
+  "agent_name": "cinematic_storyboard_planner",
+  "description": "Upload property photos \u2192 agent analyzes \u2192 detects themes \u2192 matches techniques \u2192 outputs ordered storyboard with FAL prompts and ffmpeg commands",
+  "pipeline_steps": [
+    "analyze_images",
+    "detect_themes",
+    "score_techniques",
+    "build_storyboard",
+    "output_queue"
+  ],
+  "analyze_images": {
+    "instruction": "Run vision analysis on every uploaded image. Return one object per image.",
+    "per_image_output": {
+      "file": "string",
+      "subject_type": [
+        "exterior_facade",
+        "aerial_wide",
+        "pool_area",
+        "interior_living",
+        "interior_kitchen",
+        "interior_bedroom",
+        "interior_bathroom",
+        "amenity_sport",
+        "amenity_entertainment",
+        "landscape",
+        "detail_macro",
+        "cityscape_background"
+      ],
+      "time_of_day": [
+        "golden_hour",
+        "blue_hour",
+        "midday",
+        "overcast",
+        "night",
+        "dusk"
+      ],
+      "lighting_quality": [
+        "flat",
+        "dramatic",
+        "backlit",
+        "sidelit",
+        "top_lit",
+        "underexposed",
+        "overexposed",
+        "hdr"
+      ],
+      "dominant_colors": "array[3] hex",
+      "architectural_features": [
+        "pool",
+        "glass_facade",
+        "cantilever",
+        "columns",
+        "arches",
+        "roofline",
+        "gate",
+        "driveway",
+        "landscaping",
+        "water_feature",
+        "tennis_court",
+        "bowling_alley",
+        "basketball_court",
+        "gym",
+        "wine_cellar",
+        "theater",
+        "elevator",
+        "staircase",
+        "chandelier",
+        "infinity_edge",
+        "skyline_view"
+      ],
+      "camera_height": [
+        "ground",
+        "eye_level",
+        "mid",
+        "elevated",
+        "aerial"
+      ],
+      "motion_potential": [
+        "static_ideal",
+        "pan_ideal",
+        "push_ideal",
+        "orbit_ideal",
+        "drone_ideal",
+        "tilt_ideal"
+      ],
+      "depth_layers": "integer 1-3",
+      "wow_elements": "array \u2014 standout visual elements",
+      "scale_indicators": [
+        "cars",
+        "people",
+        "trees",
+        "neighboring_buildings",
+        "furniture"
+      ],
+      "transition_edges": {
+        "left": "string \u2014 what fills left edge",
+        "right": "string \u2014 what fills right edge",
+        "top": "string \u2014 what fills top edge",
+        "bottom": "string \u2014 what fills bottom edge"
+      },
+      "usable_as_start_frame": "boolean",
+      "usable_as_end_frame": "boolean",
+      "foreground_wipe_object": "string or null",
+      "match_cut_potential": "string or null \u2014 radial/linear element for match cuts"
+    }
+  },
+  "theme_clusters": {
+    "arrival": {
+      "label": "Arrival sequence",
+      "narrative": "Viewer arrives at the property",
+      "triggers": [
+        "gate",
+        "driveway",
+        "exterior_facade",
+        "landscape"
+      ],
+      "ideal_position": "opening",
+      "max_clips": 4
+    },
+    "scale_reveal": {
+      "label": "Scale reveal",
+      "narrative": "Viewer understands this is not a normal home",
+      "triggers": [
+        "aerial_wide",
+        "depth_layers_gte_2",
+        "scale_indicators_present"
+      ],
+      "ideal_position": "early",
+      "max_clips": 3
+    },
+    "view_anchor": {
+      "label": "View anchor",
+      "narrative": "Establish location and surroundings",
+      "triggers": [
+        "cityscape_background",
+        "aerial_wide",
+        "skyline_view"
+      ],
+      "ideal_position": "early",
+      "max_clips": 2
+    },
+    "luxury_flow": {
+      "label": "Luxury interior flow",
+      "narrative": "Flow through interconnected spaces",
+      "triggers": [
+        "interior_living",
+        "interior_kitchen",
+        "interior_bedroom",
+        "interior_bathroom"
+      ],
+      "ideal_position": "middle",
+      "max_clips": 6
+    },
+    "material_detail": {
+      "label": "Material and finish detail",
+      "narrative": "Quality of every surface",
+      "triggers": [
+        "detail_macro",
+        "chandelier",
+        "staircase"
+      ],
+      "ideal_position": "middle",
+      "max_clips": 3
+    },
+    "amenity_flex": {
+      "label": "Amenity flex",
+      "narrative": "Features 99% of homes don't have \u2014 crescendo",
+      "triggers": [
+        "tennis_court",
+        "bowling_alley",
+        "basketball_court",
+        "theater",
+        "wine_cellar",
+        "gym"
+      ],
+      "ideal_position": "late",
+      "max_clips": 5
+    },
+    "night_outro": {
+      "label": "Night outro",
+      "narrative": "Property at its most atmospheric",
+      "triggers": [
+        "night",
+        "blue_hour",
+        "hdr"
+      ],
+      "ideal_position": "closing",
+      "max_clips": 2
+    }
+  },
+  "storyboard_rules": [
+    "Opening 3 slots: wow_factor >= 8 only",
+    "Never two same category back to back",
+    "Alternate camera and lighting through middle",
+    "Every 4th clip: cut or speed technique for rhythm",
+    "Closing 2 slots: night_outro preferred, wow_factor >= 7",
+    "Max 12 clips for 60-90 second video",
+    "amenity_flex cluster goes in slots 8-10 as crescendo",
+    "speed_ramp must be followed by slow/static technique next slot",
+    "Use Veo 3.1 for drone/aerial/lighting",
+    "Use Kling 3.0 for orbit/multi-shot/interior flow",
+    "Never repeat same technique_id"
+  ],
+  "techniques": [
+    {
+      "id": "T001",
+      "name": "speed_ramp_drone_to_slow_pan",
+      "category": "speed",
+      "wow_factor": 9,
+      "clip_position": "opening",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "aerial_wide"
+        ],
+        "camera_height": [
+          "aerial",
+          "elevated"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Fast FPV drone ascending kinetically from ground, {subject} rushing past frame edges, heavy motion blur, decelerates into slow cinematic pan revealing full estate at {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"minterpolate=fps=60,setpts=if(lt(T\\,3)\\,0.4*PTS\\,2*PTS-3*0.4)\" out.mp4",
+      "pairs_with": [
+        "T002",
+        "T022"
+      ],
+      "storyboard_note": "Hook opener \u2014 fast energy into slow breathe"
+    },
+    {
+      "id": "T002",
+      "name": "slow_left_right_pan",
+      "category": "camera",
+      "wow_factor": 6,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "pool_area",
+          "interior_living"
+        ],
+        "motion_potential": [
+          "pan_ideal"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "view_anchor"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Slow cinematic pan left to right across {subject}, telephoto compression, horizon locked, {time_of_day} lighting, zero camera shake",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw*0.85:ih:t*30:0,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T013",
+        "T027"
+      ],
+      "storyboard_note": "Breathing room between intense moves"
+    },
+    {
+      "id": "T003",
+      "name": "top_down_spin_descent",
+      "category": "camera",
+      "wow_factor": 10,
+      "clip_position": "opening",
+      "match": {
+        "subject_type": [
+          "aerial_wide",
+          "exterior_facade"
+        ],
+        "camera_height": [
+          "aerial"
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "arrival"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "True bird's eye aerial descending rapidly while rotating clockwise, full {subject} estate footprint visible below, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i spin.mp4 -vf \"rotate=t*0.3:fillcolor=black\" out.mp4",
+      "pairs_with": [
+        "T001",
+        "T047"
+      ],
+      "storyboard_note": "Establishes scale from god view"
+    },
+    {
+      "id": "T004",
+      "name": "underexposed_to_hdr_shift",
+      "category": "lighting",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "lighting_quality": [
+          "flat",
+          "underexposed",
+          "overcast"
+        ],
+        "subject_type": [
+          "exterior_facade",
+          "interior_living",
+          "pool_area"
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Same {subject} locked off, starts underexposed and moody, exposure lifts dramatically revealing full HDR {time_of_day} architectural detail",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"curves=all='0/0 0.3/0.5 0.7/0.85 1/1'\" out.mp4",
+      "pairs_with": [
+        "T008",
+        "T033"
+      ],
+      "storyboard_note": "Works on any flat photo \u2014 instant drama"
+    },
+    {
+      "id": "T005",
+      "name": "midline_exposure_lift",
+      "category": "lighting",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "lighting_quality": [
+          "flat",
+          "underexposed"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "material_detail"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera locked on {subject}, exposure gradually lifts from -2 stops to correct, details emerge in shadows",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"eq=brightness='0.3*t/8-0.3'\" out.mp4",
+      "pairs_with": [
+        "T004",
+        "T067"
+      ],
+      "storyboard_note": "Subtle version of T004 \u2014 use for interiors"
+    },
+    {
+      "id": "T006",
+      "name": "pull_back_scale_reveal",
+      "category": "camera",
+      "wow_factor": 9,
+      "clip_position": "early",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "amenity_sport",
+          "pool_area"
+        ],
+        "depth_layers": [
+          2,
+          3
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "amenity_flex"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Start tight on {subject} foreground detail, camera pulls back rapidly revealing overwhelming scale of full estate, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='1.8-0.2*t':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080\" out.mp4",
+      "pairs_with": [
+        "T041",
+        "T071"
+      ],
+      "storyboard_note": "Best reveal technique for scale"
+    },
+    {
+      "id": "T007",
+      "name": "orbit_around_subject",
+      "category": "camera",
+      "wow_factor": 8,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "amenity_sport",
+          "pool_area"
+        ],
+        "camera_height": [
+          "elevated",
+          "aerial"
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "amenity_flex"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/kling-video/v3/image-to-video",
+        "prompt": "Camera orbits 180 degrees clockwise around {subject}, subject centered throughout, {time_of_day} cinematic lighting",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"rotate=t*0.4:fillcolor=black\" out.mp4",
+      "pairs_with": [
+        "T047",
+        "T090"
+      ],
+      "storyboard_note": "Use Kling for orbit \u2014 better subject lock"
+    },
+    {
+      "id": "T008",
+      "name": "hard_day_night_cut",
+      "category": "cut",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "pool_area"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "night_outro"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Same {subject} locked off at {time_of_day}, static shot",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "second_clip_prompt": "Identical angle of {subject} at night with architectural LED lighting activated",
+      "ffmpeg": "ffmpeg -i day.mp4 -i night.mp4 -filter_complex \"[0]trim=0:3[a];[1]trim=0:5[b];[a][b]concat\" out.mp4",
+      "pairs_with": [
+        "T004",
+        "T067"
+      ],
+      "storyboard_note": "Cut on beat drop \u2014 massive impact"
+    },
+    {
+      "id": "T009",
+      "name": "freeze_then_resume",
+      "category": "speed",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "amenity_sport",
+          "pool_area"
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "amenity_flex"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Dramatic camera move toward {subject} at {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"select='if(lt(t,3),1,if(lt(t,3.8),0,1))',setpts=N/FRAME_RATE/TB\" out.mp4",
+      "pairs_with": [
+        "T001",
+        "T060"
+      ],
+      "storyboard_note": "Freeze on the money frame then cut"
+    },
+    {
+      "id": "T010",
+      "name": "tilt_up_height_reveal",
+      "category": "camera",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "interior_living"
+        ],
+        "architectural_features": [
+          "chandelier",
+          "staircase",
+          "roofline"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera starts at ground level tilting slowly upward, ultra wide, revealing full height of {subject} at {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw:ih*0.8:0:ih*0.2-t*15,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T058",
+        "T087"
+      ],
+      "storyboard_note": "Use when building is very tall"
+    },
+    {
+      "id": "T011",
+      "name": "push_through_glass",
+      "category": "spatial",
+      "wow_factor": 9,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "interior_living"
+        ],
+        "architectural_features": [
+          "glass_facade"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera pushes fast toward glass door of {subject}, passes through into interior, {time_of_day} light spills in",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i ext.mp4 -i int.mp4 -filter_complex \"[0][1]xfade=transition=fade:duration=0.5:offset=3.5\" out.mp4",
+      "pairs_with": [
+        "T039",
+        "T050"
+      ],
+      "storyboard_note": "Great interior-exterior bridge"
+    },
+    {
+      "id": "T012",
+      "name": "night_led_reveal",
+      "category": "lighting",
+      "wow_factor": 9,
+      "clip_position": "closing",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "pool_area"
+        ],
+        "time_of_day": [
+          "night",
+          "blue_hour"
+        ],
+        "theme_cluster": [
+          "night_outro"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Mansion exterior at night, architectural LEDs activate progressively room by room, pool glows, {subject} transforms",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"eq=brightness='0.05*t/8-0.2':saturation=1.6\" out.mp4",
+      "pairs_with": [
+        "T008",
+        "T053"
+      ],
+      "storyboard_note": "Outro hero shot"
+    },
+    {
+      "id": "T013",
+      "name": "dolly_zoom_vertigo",
+      "category": "camera",
+      "wow_factor": 9,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "interior_living",
+          "amenity_sport"
+        ],
+        "depth_layers": [
+          2,
+          3
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "amenity_flex"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Dolly zoom effect on {subject}, background expands as subject stays same size, {time_of_day}, vertigo sensation",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='1.3-0.04*t':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1\" out.mp4",
+      "pairs_with": [
+        "T002",
+        "T075"
+      ],
+      "storyboard_note": "Hitchcock zoom \u2014 extremely cinematic"
+    },
+    {
+      "id": "T014",
+      "name": "low_angle_upward_reveal",
+      "category": "camera",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "amenity_sport",
+          "pool_area"
+        ],
+        "camera_height": [
+          "ground",
+          "eye_level"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Extreme low angle looking up at {subject} from ground, camera tilts up slowly, ultra wide, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"perspective=x0=0:y0=60:x1=iw:y1=0:x2=0:y2=ih:x3=iw:y3=ih-60\" out.mp4",
+      "pairs_with": [
+        "T010",
+        "T058"
+      ],
+      "storyboard_note": "Makes any building look monumental"
+    },
+    {
+      "id": "T015",
+      "name": "interior_to_exterior_push",
+      "category": "spatial",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "interior_living",
+          "interior_bedroom",
+          "interior_bathroom"
+        ],
+        "architectural_features": [
+          "glass_facade",
+          "pool"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "view_anchor"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Looking from inside {subject} through floor-to-ceiling glass, camera pushes toward window revealing exterior landscape, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i in.mp4 -i out.mp4 -filter_complex \"[0][1]xfade=transition=circleopen:duration=0.8:offset=3.2\" out.mp4",
+      "pairs_with": [
+        "T011",
+        "T045"
+      ],
+      "storyboard_note": "Connects indoor luxury to outdoor scale"
+    },
+    {
+      "id": "T016",
+      "name": "match_cut_sky_to_pool",
+      "category": "cut",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "architectural_features": [
+          "pool",
+          "infinity_edge"
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera tilts up to open blue sky at {time_of_day}, fills frame completely",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "second_clip_prompt": "Infinity pool surface from directly above, same blue tone as sky, water rippling",
+      "ffmpeg": "ffmpeg -i sky.mp4 -i pool.mp4 -filter_complex \"[0]trim=end=3[a];[1]trim=end=5[b];[a][b]concat\" out.mp4",
+      "pairs_with": [
+        "T030",
+        "T063"
+      ],
+      "storyboard_note": "Colour match cut \u2014 sky to water"
+    },
+    {
+      "id": "T017",
+      "name": "slow_motion_water",
+      "category": "speed",
+      "wow_factor": 7,
+      "clip_position": "middle",
+      "match": {
+        "architectural_features": [
+          "pool",
+          "water_feature",
+          "infinity_edge"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "material_detail"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Infinity pool water edge at {time_of_day}, slow motion droplets catching light, water surface detail",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"minterpolate=fps=120,setpts=4*PTS\" -r 30 out.mp4",
+      "pairs_with": [
+        "T054",
+        "T080"
+      ],
+      "storyboard_note": "Sensory luxury \u2014 water always mesmerises"
+    },
+    {
+      "id": "T018",
+      "name": "sunrise_timelapse",
+      "category": "speed",
+      "wow_factor": 8,
+      "clip_position": "opening",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "aerial_wide"
+        ],
+        "time_of_day": [
+          "golden_hour",
+          "blue_hour"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "night_outro"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Locked off shot of {subject}, sun rises behind it, shadows move dramatically across facade, clouds drift",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"setpts=0.1*PTS\" -r 30 out.mp4",
+      "pairs_with": [
+        "T040",
+        "T053"
+      ],
+      "storyboard_note": "Property alive through time"
+    },
+    {
+      "id": "T019",
+      "name": "foreground_wipe_transition",
+      "category": "cut",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "foreground_wipe_object": "not null",
+        "theme_cluster": [
+          "luxury_flow",
+          "arrival"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera slides left behind {foreground_wipe_object} hard edge fills frame completely",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i in.mp4 -i out.mp4 -filter_complex \"[0][1]xfade=transition=slideleft:duration=0.4:offset=2.6\" out.mp4",
+      "pairs_with": [
+        "T050",
+        "T057"
+      ],
+      "storyboard_note": "Hides cut in motion \u2014 looks professional"
+    },
+    {
+      "id": "T020",
+      "name": "crane_detail_to_wide",
+      "category": "camera",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "detail_macro",
+          "exterior_facade",
+          "interior_living"
+        ],
+        "theme_cluster": [
+          "material_detail",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Start extreme close on architectural detail of {subject}, crane up and out to reveal full context at {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='2-0.18*t':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080\" out.mp4",
+      "pairs_with": [
+        "T041",
+        "T071"
+      ],
+      "storyboard_note": "Micro to macro \u2014 reveals context"
+    },
+    {
+      "id": "T021",
+      "name": "shadow_to_midtone_reveal",
+      "category": "lighting",
+      "wow_factor": 6,
+      "clip_position": "any",
+      "match": {
+        "lighting_quality": [
+          "underexposed",
+          "dramatic"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "material_detail"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "{subject} in deep shadow, exposure lifts to reveal midtone architectural detail, textures emerge",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"curves=all='0/0 0.2/0.4 0.6/0.7 1/1'\" out.mp4",
+      "pairs_with": [
+        "T005",
+        "T048"
+      ],
+      "storyboard_note": "Subtle lighting drama for interiors"
+    },
+    {
+      "id": "T022",
+      "name": "aerial_to_street_drop",
+      "category": "spatial",
+      "wow_factor": 9,
+      "clip_position": "opening",
+      "match": {
+        "subject_type": [
+          "aerial_wide",
+          "exterior_facade"
+        ],
+        "camera_height": [
+          "aerial"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Start high aerial above {subject}, drop rapidly descending to eye level street height in one continuous move, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='2-0.25*t':d=1:s=1920x1080\" out.mp4",
+      "pairs_with": [
+        "T001",
+        "T003"
+      ],
+      "storyboard_note": "God to human POV \u2014 powerful arrival"
+    },
+    {
+      "id": "T023",
+      "name": "diagonal_facade_drift",
+      "category": "camera",
+      "wow_factor": 6,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "pool_area"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "view_anchor"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera drifts slowly diagonally bottom-left to top-right across {subject} facade, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw*0.8:ih*0.8:t*12:t*8,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T002",
+        "T035"
+      ],
+      "storyboard_note": "Unusual axis \u2014 adds movement to static shots"
+    },
+    {
+      "id": "T024",
+      "name": "foreground_morph_cut",
+      "category": "cut",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "foreground_wipe_object": "not null",
+        "depth_layers": [
+          2,
+          3
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "arrival"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera pans behind {foreground_wipe_object} pillar or column, it fills frame completely, edge sharp",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i in.mp4 -i out.mp4 -filter_complex \"[0][1]xfade=transition=slideright:duration=0.2:offset=2.8\" out.mp4",
+      "pairs_with": [
+        "T019",
+        "T050"
+      ],
+      "storyboard_note": "Most invisible transition available"
+    },
+    {
+      "id": "T025",
+      "name": "warm_to_cool_color_shift",
+      "category": "lighting",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "time_of_day": [
+          "golden_hour",
+          "blue_hour"
+        ],
+        "theme_cluster": [
+          "night_outro",
+          "view_anchor"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Locked shot of {subject}, color temperature shifts from warm golden hour to cool blue twilight in one clip",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"colorbalance=bs='-0.008*t':ms='0.004*t'\" out.mp4",
+      "pairs_with": [
+        "T018",
+        "T072"
+      ],
+      "storyboard_note": "Day to night in one shot"
+    },
+    {
+      "id": "T026",
+      "name": "ramped_whip_pan",
+      "category": "speed",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "motion_potential": [
+          "pan_ideal"
+        ],
+        "theme_cluster": [
+          "amenity_flex",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera whips right at peak speed across {subject}, directional motion blur fills entire frame",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"minterpolate=fps=60,mblur=power=0.5\" out.mp4",
+      "pairs_with": [
+        "T046",
+        "T050"
+      ],
+      "storyboard_note": "Energy transition between sequences"
+    },
+    {
+      "id": "T027",
+      "name": "telephoto_compression_pan",
+      "category": "camera",
+      "wow_factor": 7,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "cityscape_background"
+        ],
+        "depth_layers": [
+          2,
+          3
+        ],
+        "theme_cluster": [
+          "view_anchor",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "200mm telephoto slow pan right, {subject} compressed against distant background, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw*0.5:ih:t*8:0,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T002",
+        "T035"
+      ],
+      "storyboard_note": "Cityscape compression \u2014 location context"
+    },
+    {
+      "id": "T028",
+      "name": "floor_to_ceiling_tilt",
+      "category": "spatial",
+      "wow_factor": 7,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "interior_living",
+          "interior_bedroom"
+        ],
+        "architectural_features": [
+          "chandelier",
+          "staircase"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "material_detail"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Start on marble floor detail of {subject}, tilt straight up to reveal double-height ceiling and chandelier, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw:ih*0.7:0:ih-t*25,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T010",
+        "T087"
+      ],
+      "storyboard_note": "Verticality flex \u2014 height equals money"
+    },
+    {
+      "id": "T029",
+      "name": "lens_flare_sweep",
+      "category": "lighting",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "time_of_day": [
+          "golden_hour"
+        ],
+        "subject_type": [
+          "exterior_facade",
+          "pool_area"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Sun sweeps into frame from left across {subject}, expanding lens flare washes across facade at {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"eq=brightness=if(between(t\\,2\\,4)\\,0.2*sin(3.14*(t-2)/2)\\,0)\" out.mp4",
+      "pairs_with": [
+        "T004",
+        "T025"
+      ],
+      "storyboard_note": "Golden hour hero moment"
+    },
+    {
+      "id": "T030",
+      "name": "radial_blur_match_cut",
+      "category": "cut",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "match_cut_potential": "radial",
+        "theme_cluster": [
+          "amenity_flex",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera spins up to sky, radial motion blur fills frame completely",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "second_clip_prompt": "Ceiling fan spinning clockwise viewed from below, same radial motion",
+      "ffmpeg": "ffmpeg -i in.mp4 -i out.mp4 -filter_complex \"[0][1]xfade=transition=radial:duration=0.3:offset=2.7\" out.mp4",
+      "pairs_with": [
+        "T016",
+        "T063"
+      ],
+      "storyboard_note": "Pro-level match cut \u2014 requires planning"
+    },
+    {
+      "id": "T031",
+      "name": "right_to_left_reverse_pan",
+      "category": "camera",
+      "wow_factor": 6,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "pool_area",
+          "interior_living",
+          "exterior_facade"
+        ],
+        "motion_potential": [
+          "pan_ideal"
+        ],
+        "theme_cluster": [
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Slow pan right to left across {subject}, water reflections or interior space, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw*0.85:ih:iw*0.15-t*25:0,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T002",
+        "T035"
+      ],
+      "storyboard_note": "Reverse direction for contrast after right pan"
+    },
+    {
+      "id": "T032",
+      "name": "orbit_pull_out_reveal",
+      "category": "spatial",
+      "wow_factor": 9,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "amenity_sport",
+          "pool_area"
+        ],
+        "camera_height": [
+          "elevated",
+          "aerial"
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "amenity_flex"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/kling-video/v3/image-to-video",
+        "prompt": "Tight orbit around architectural detail of {subject}, camera pulls out mid-orbit revealing full building context, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='1.8-0.12*t':d=1,rotate=t*0.2:fillcolor=none\" out.mp4",
+      "pairs_with": [
+        "T007",
+        "T020"
+      ],
+      "storyboard_note": "Combines orbit and pull \u2014 complex and impressive"
+    },
+    {
+      "id": "T033",
+      "name": "exposure_rack_mid_shot",
+      "category": "lighting",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "interior_living"
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera holds steady on {subject}, exposure suddenly drops 2 stops then recovers, dramatic pulse of darkness",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"eq=brightness=if(between(t\\,2\\,2.6)\\,-0.4\\,0)\" out.mp4",
+      "pairs_with": [
+        "T004",
+        "T008"
+      ],
+      "storyboard_note": "Punctuation moment \u2014 syncs to audio hit"
+    },
+    {
+      "id": "T034",
+      "name": "ultra_slow_aerial_descent",
+      "category": "speed",
+      "wow_factor": 8,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "aerial_wide",
+          "pool_area"
+        ],
+        "camera_height": [
+          "aerial"
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Drone descends slowly toward {subject}, ultra cinematic, {time_of_day} reflections on pool surface",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"minterpolate=fps=120,setpts=3*PTS\" -r 30 out.mp4",
+      "pairs_with": [
+        "T017",
+        "T054"
+      ],
+      "storyboard_note": "Beauty shot \u2014 takes time so use wisely"
+    },
+    {
+      "id": "T035",
+      "name": "pool_edge_lateral_track",
+      "category": "camera",
+      "wow_factor": 7,
+      "clip_position": "middle",
+      "match": {
+        "architectural_features": [
+          "pool",
+          "infinity_edge"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera tracks laterally along infinity pool edge, water to one side, estate to other, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw*0.85:ih:t*14:0,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T002",
+        "T017"
+      ],
+      "storyboard_note": "Pool as runway \u2014 leads eye through frame"
+    },
+    {
+      "id": "T036",
+      "name": "split_screen_multi_room",
+      "category": "cut",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "interior_living",
+          "interior_kitchen",
+          "interior_bedroom",
+          "amenity_entertainment"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "amenity_flex"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Wide interior shot of {subject} from locked camera, {time_of_day}",
+        "duration": "6",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i a.mp4 -i b.mp4 -filter_complex \"[0]crop=iw/2:ih:0:0[l];[1]crop=iw/2:ih:iw/2:0[r];[l][r]hstack\" out.mp4",
+      "pairs_with": [
+        "T069",
+        "T082"
+      ],
+      "storyboard_note": "Multi-panel \u2014 communicates scale of offering"
+    },
+    {
+      "id": "T037",
+      "name": "overcast_to_backlit_shift",
+      "category": "lighting",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "lighting_quality": [
+          "flat",
+          "overcast"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "{subject} in flat overcast light, sun breaks through shifting to dramatic backlit silhouette and rim lighting",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"eq=contrast='1+0.05*t':brightness='0.03*t'\" out.mp4",
+      "pairs_with": [
+        "T029",
+        "T004"
+      ],
+      "storyboard_note": "Works great on bad source photos"
+    },
+    {
+      "id": "T038",
+      "name": "handheld_to_locked_settle",
+      "category": "camera",
+      "wow_factor": 6,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "interior_living"
+        ],
+        "motion_potential": [
+          "push_ideal"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Handheld camera approach toward {subject} entrance, settles to locked tripod shot revealing subject fully, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"deshake=x=-1:y=-1:w=-1:h=-1:rx=64:ry=64\" out.mp4",
+      "pairs_with": [
+        "T002",
+        "T006"
+      ],
+      "storyboard_note": "POV arrival feel"
+    },
+    {
+      "id": "T039",
+      "name": "continuous_interior_swim",
+      "category": "spatial",
+      "wow_factor": 8,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "interior_living",
+          "interior_kitchen",
+          "interior_bedroom"
+        ],
+        "theme_cluster": [
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/kling-video/v3/image-to-video",
+        "prompt": "Gimbal glides continuously through {subject} living room into kitchen into dining room without stopping, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"setpts=0.85*PTS\" out.mp4",
+      "pairs_with": [
+        "T011",
+        "T050"
+      ],
+      "storyboard_note": "Use Kling multi-shot for this"
+    },
+    {
+      "id": "T040",
+      "name": "time_warp_day_cycle",
+      "category": "speed",
+      "wow_factor": 8,
+      "clip_position": "opening",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "aerial_wide"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "night_outro"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Locked shot of {subject}, clouds move, shadows rotate, sun arcs overhead in compressed timelapse",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"setpts=0.05*PTS\" -r 30 out.mp4",
+      "pairs_with": [
+        "T018",
+        "T025"
+      ],
+      "storyboard_note": "Property alive through time"
+    },
+    {
+      "id": "T041",
+      "name": "macro_to_extreme_wide",
+      "category": "cut",
+      "wow_factor": 9,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "detail_macro",
+          "aerial_wide"
+        ],
+        "theme_cluster": [
+          "material_detail",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Extreme close macro on architectural surface detail of {subject}",
+        "duration": "3",
+        "resolution": "1080p"
+      },
+      "second_clip_prompt": "Drone extreme wide aerial revealing full estate scale at {time_of_day}",
+      "ffmpeg": "ffmpeg -i macro.mp4 -i wide.mp4 -filter_complex \"[0]trim=0:2.5[a];[1]trim=0:5[b];[a][b]concat\" out.mp4",
+      "pairs_with": [
+        "T020",
+        "T082"
+      ],
+      "storyboard_note": "Contrast scale smash \u2014 most satisfying cut"
+    },
+    {
+      "id": "T042",
+      "name": "shadow_sweep_facade",
+      "category": "lighting",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade"
+        ],
+        "time_of_day": [
+          "golden_hour",
+          "midday"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Cloud passes overhead, shadow sweeps across {subject} facade left to right, dramatic light change",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"eq=brightness='-0.15*sin(t)'\" out.mp4",
+      "pairs_with": [
+        "T029",
+        "T037"
+      ],
+      "storyboard_note": "Natural drama \u2014 cloud as director"
+    },
+    {
+      "id": "T043",
+      "name": "ground_rush_fpv",
+      "category": "camera",
+      "wow_factor": 9,
+      "clip_position": "opening",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "landscape"
+        ],
+        "camera_height": [
+          "ground"
+        ],
+        "theme_cluster": [
+          "arrival"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "FPV drone skims inches above ground rushing toward {subject} entrance, motion blur extreme, pulls up at last second",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"minterpolate=fps=60,zoompan=z='1+0.04*t':d=1\" out.mp4",
+      "pairs_with": [
+        "T001",
+        "T022"
+      ],
+      "storyboard_note": "Adrenaline opener"
+    },
+    {
+      "id": "T044",
+      "name": "split_day_night_side_by_side",
+      "category": "cut",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "pool_area"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "night_outro"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Same locked {subject} angle in daylight",
+        "duration": "5",
+        "resolution": "1080p"
+      },
+      "second_clip_prompt": "Identical angle of {subject} at night fully lit with architectural lighting",
+      "ffmpeg": "ffmpeg -i day.mp4 -i night.mp4 -filter_complex \"[0][1]hstack\" out.mp4",
+      "pairs_with": [
+        "T008",
+        "T012"
+      ],
+      "storyboard_note": "Side by side comparison \u2014 powerful"
+    },
+    {
+      "id": "T045",
+      "name": "glass_reflection_pan",
+      "category": "spatial",
+      "wow_factor": 7,
+      "clip_position": "middle",
+      "match": {
+        "architectural_features": [
+          "glass_facade",
+          "pool"
+        ],
+        "depth_layers": [
+          2,
+          3
+        ],
+        "theme_cluster": [
+          "view_anchor",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Pan across glass facade of {subject} reflecting distorted landscape and sky, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw*0.8:ih:t*12:0,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T015",
+        "T027"
+      ],
+      "storyboard_note": "Abstract beauty \u2014 glass as canvas"
+    },
+    {
+      "id": "T046",
+      "name": "peak_blur_match_cut",
+      "category": "speed",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "match_cut_potential": "not null",
+        "theme_cluster": [
+          "amenity_flex",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera whips right fast into maximum directional motion blur from {subject}",
+        "duration": "3",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i in.mp4 -i out.mp4 -filter_complex \"[0][1]xfade=transition=fade:duration=0.15:offset=2.85\" out.mp4",
+      "pairs_with": [
+        "T026",
+        "T050"
+      ],
+      "storyboard_note": "Peak blur equals invisible cut point"
+    },
+    {
+      "id": "T047",
+      "name": "full_perimeter_orbit",
+      "category": "camera",
+      "wow_factor": 8,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "aerial_wide",
+          "exterior_facade"
+        ],
+        "camera_height": [
+          "aerial"
+        ],
+        "theme_cluster": [
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Drone orbits full perimeter of {subject} estate in one continuous 360 degree shot, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"setpts=0.9*PTS\" out.mp4",
+      "pairs_with": [
+        "T003",
+        "T007"
+      ],
+      "storyboard_note": "360 tour \u2014 shows all sides"
+    },
+    {
+      "id": "T048",
+      "name": "backlit_silhouette_reveal",
+      "category": "lighting",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "lighting_quality": [
+          "backlit"
+        ],
+        "subject_type": [
+          "exterior_facade",
+          "interior_living"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "{subject} silhouetted against bright window or sky, camera auto-exposes revealing interior detail gradually",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"curves=all='0/0.1 0.4/0.55 1/1'\" out.mp4",
+      "pairs_with": [
+        "T021",
+        "T005"
+      ],
+      "storyboard_note": "Backlit to exposed \u2014 works on any window"
+    },
+    {
+      "id": "T049",
+      "name": "burst_through_treeline",
+      "category": "spatial",
+      "wow_factor": 9,
+      "clip_position": "opening",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "aerial_wide"
+        ],
+        "architectural_features": [
+          "landscaping"
+        ],
+        "camera_height": [
+          "elevated",
+          "aerial"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Drone starts below tree canopy rises straight up bursting through tree tops to reveal {subject} estate beyond, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='1':x=0:y='ih/2-ih/zoom/2+t*18':d=1\" out.mp4",
+      "pairs_with": [
+        "T001",
+        "T003"
+      ],
+      "storyboard_note": "Dramatic reveal from nature"
+    },
+    {
+      "id": "T050",
+      "name": "invisible_morph_cut",
+      "category": "cut",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "motion_potential": [
+          "pan_ideal"
+        ],
+        "theme_cluster": [
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Gimbal pans fast left reaching peak motion blur, stitch to next space",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i room1.mp4 -i room2.mp4 -filter_complex \"[0][1]xfade=transition=slideleft:duration=0.12:offset=1.88\" out.mp4",
+      "pairs_with": [
+        "T019",
+        "T024"
+      ],
+      "storyboard_note": "Motion blur as glue between spaces"
+    },
+    {
+      "id": "T051",
+      "name": "dutch_tilt_to_level",
+      "category": "camera",
+      "wow_factor": 6,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "interior_living"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera starts at 15 degree dutch tilt on {subject}, slowly rotates to level",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"rotate='0.26-0.03*t':fillcolor=black\" out.mp4",
+      "pairs_with": [
+        "T002",
+        "T038"
+      ],
+      "storyboard_note": "Subtle unease then resolution"
+    },
+    {
+      "id": "T052",
+      "name": "descend_into_courtyard",
+      "category": "spatial",
+      "wow_factor": 9,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "aerial_wide",
+          "exterior_facade"
+        ],
+        "camera_height": [
+          "aerial"
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "arrival"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Drone descends straight down into open courtyard of {subject}, walls rise on all sides, intimate enclosed reveal",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='1.2':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)+t*4':d=1\" out.mp4",
+      "pairs_with": [
+        "T003",
+        "T022"
+      ],
+      "storyboard_note": "Descending into the property"
+    },
+    {
+      "id": "T053",
+      "name": "neon_night_to_blue_dawn",
+      "category": "lighting",
+      "wow_factor": 8,
+      "clip_position": "closing",
+      "match": {
+        "time_of_day": [
+          "night",
+          "blue_hour"
+        ],
+        "architectural_features": [
+          "pool",
+          "glass_facade"
+        ],
+        "theme_cluster": [
+          "night_outro"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "{subject} lit with colored LEDs at night, slowly shifts to pre-dawn blue hour ambient",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"hue=h=t*4:s='1.5-0.1*t'\" out.mp4",
+      "pairs_with": [
+        "T012",
+        "T025"
+      ],
+      "storyboard_note": "Outro emotional shift"
+    },
+    {
+      "id": "T054",
+      "name": "overcranked_pool_surface",
+      "category": "speed",
+      "wow_factor": 7,
+      "clip_position": "middle",
+      "match": {
+        "architectural_features": [
+          "pool",
+          "water_feature",
+          "infinity_edge"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "material_detail"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Pool surface at {time_of_day} extreme slow motion, reflections shimmer, water barely moving, hyper real",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"minterpolate=fps=120,setpts=8*PTS\" -r 30 out.mp4",
+      "pairs_with": [
+        "T017",
+        "T034"
+      ],
+      "storyboard_note": "Sensory luxury moment"
+    },
+    {
+      "id": "T055",
+      "name": "push_while_rotating",
+      "category": "camera",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "amenity_sport"
+        ],
+        "motion_potential": [
+          "push_ideal",
+          "orbit_ideal"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/kling-video/v3/image-to-video",
+        "prompt": "Camera pushes toward {subject} while slowly rotating clockwise, dynamic spatial movement, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='1+0.025*t':d=1,rotate=t*0.08:fillcolor=none\" out.mp4",
+      "pairs_with": [
+        "T007",
+        "T032"
+      ],
+      "storyboard_note": "Use Kling \u2014 complex combined move"
+    },
+    {
+      "id": "T056",
+      "name": "fog_burn_off_reveal",
+      "category": "lighting",
+      "wow_factor": 8,
+      "clip_position": "opening",
+      "match": {
+        "lighting_quality": [
+          "flat",
+          "overcast"
+        ],
+        "subject_type": [
+          "exterior_facade",
+          "aerial_wide"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "{subject} emerging from morning mist, fog burns off revealing architecture, atmospheric golden light follows",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"eq=contrast='1+0.04*t':brightness='0.015*t'\" out.mp4",
+      "pairs_with": [
+        "T037",
+        "T029"
+      ],
+      "storyboard_note": "Mystery to reveal \u2014 dramatic opener"
+    },
+    {
+      "id": "T057",
+      "name": "architectural_line_transition",
+      "category": "cut",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "architectural_features": [
+          "columns",
+          "arches"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "arrival"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera pans to {subject} column edge that fills frame completely, hard vertical line",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i in.mp4 -i out.mp4 -filter_complex \"[0][1]xfade=transition=slideright:duration=0.15:offset=2.85\" out.mp4",
+      "pairs_with": [
+        "T019",
+        "T024"
+      ],
+      "storyboard_note": "Architecture as edit tool"
+    },
+    {
+      "id": "T058",
+      "name": "slow_boom_down_facade",
+      "category": "camera",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade"
+        ],
+        "motion_potential": [
+          "tilt_ideal"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera starts at roofline of {subject}, booms slowly straight down facade to ground, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw:ih*0.8:0:t*16,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T010",
+        "T014"
+      ],
+      "storyboard_note": "Reverse tilt \u2014 shows height differently"
+    },
+    {
+      "id": "T059",
+      "name": "chandelier_spin_reveal",
+      "category": "spatial",
+      "wow_factor": 8,
+      "clip_position": "middle",
+      "match": {
+        "architectural_features": [
+          "chandelier",
+          "staircase"
+        ],
+        "subject_type": [
+          "interior_living",
+          "interior_bedroom"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "material_detail"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/kling-video/v3/image-to-video",
+        "prompt": "Camera tilts 90 degrees up from floor then spins, ending centered on chandelier overhead, {time_of_day} light refracting",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"rotate=t*0.7:fillcolor=black\" out.mp4",
+      "pairs_with": [
+        "T028",
+        "T087"
+      ],
+      "storyboard_note": "Chandelier as star \u2014 luxury beacon"
+    },
+    {
+      "id": "T060",
+      "name": "ramp_push_sudden_hold",
+      "category": "speed",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "motion_potential": [
+          "push_ideal"
+        ],
+        "theme_cluster": [
+          "amenity_flex",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera pushes fast toward {subject}, motion builds, then holds completely still on perfect frame",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"minterpolate=fps=60,setpts=if(lt(T\\,3)\\,0.5*PTS\\,if(lt(T\\,4.5)\\,999*PTS\\,PTS))\" out.mp4",
+      "pairs_with": [
+        "T009",
+        "T001"
+      ],
+      "storyboard_note": "Hard freeze on the money shot"
+    },
+    {
+      "id": "T061",
+      "name": "banking_turn_flyby",
+      "category": "camera",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "aerial_wide"
+        ],
+        "camera_height": [
+          "aerial"
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "arrival"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Drone banks left in sweeping turn around corner of {subject}, horizon tilts, cinematic aerial, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"rotate='0.25*sin(t):fillcolor=black'\" out.mp4",
+      "pairs_with": [
+        "T047",
+        "T003"
+      ],
+      "storyboard_note": "Top Gun energy"
+    },
+    {
+      "id": "T062",
+      "name": "spot_to_full_exposure",
+      "category": "lighting",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "lighting_quality": [
+          "dramatic",
+          "underexposed"
+        ],
+        "subject_type": [
+          "exterior_facade",
+          "pool_area"
+        ],
+        "theme_cluster": [
+          "night_outro",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Only {subject} pool lit, rest in darkness, exposure expands outward revealing full grounds",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"vignette=angle=PI/3:mode=backward:eval=frame\" out.mp4",
+      "pairs_with": [
+        "T012",
+        "T048"
+      ],
+      "storyboard_note": "Theatrical lighting drama"
+    },
+    {
+      "id": "T063",
+      "name": "water_to_sky_match_cut",
+      "category": "cut",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "architectural_features": [
+          "pool",
+          "infinity_edge"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "view_anchor"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera tilts down to pool surface, reflection of sky fills entire frame",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "second_clip_prompt": "Actual sky at {time_of_day} filling frame \u2014 same blue tone",
+      "ffmpeg": "ffmpeg -i pool.mp4 -i sky.mp4 -filter_complex \"[0][1]xfade=transition=fade:duration=0.4:offset=2.6\" out.mp4",
+      "pairs_with": [
+        "T016",
+        "T030"
+      ],
+      "storyboard_note": "Poetic match cut \u2014 sky in the pool"
+    },
+    {
+      "id": "T064",
+      "name": "jib_arc_over_building",
+      "category": "camera",
+      "wow_factor": 8,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "aerial_wide"
+        ],
+        "camera_height": [
+          "elevated",
+          "aerial"
+        ],
+        "theme_cluster": [
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera arcs overhead sweeping from front facade to roof to rear pool of {subject}, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"rotate='0.4*t:fillcolor=black'\" out.mp4",
+      "pairs_with": [
+        "T007",
+        "T047"
+      ],
+      "storyboard_note": "Full reveal arc"
+    },
+    {
+      "id": "T065",
+      "name": "wide_to_intimate_push",
+      "category": "camera",
+      "wow_factor": 7,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "amenity_sport",
+          "interior_living",
+          "pool_area"
+        ],
+        "motion_potential": [
+          "push_ideal"
+        ],
+        "theme_cluster": [
+          "amenity_flex",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Wide establishing shot of {subject}, push in to intimate close angle, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='1+0.07*t':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1\" out.mp4",
+      "pairs_with": [
+        "T006",
+        "T071"
+      ],
+      "storyboard_note": "Draws viewer in \u2014 intimacy after scale"
+    },
+    {
+      "id": "T066",
+      "name": "echo_stutter_cut",
+      "category": "speed",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "wow_elements": "not empty",
+        "theme_cluster": [
+          "amenity_flex",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Peak reveal moment of {subject} at {time_of_day}",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -stream_loop 2 -vf \"trim=2:2.3,setpts=PTS-STARTPTS\" -t 1 out.mp4",
+      "pairs_with": [
+        "T009",
+        "T060"
+      ],
+      "storyboard_note": "Stutter on the reveal \u2014 syncs to music"
+    },
+    {
+      "id": "T067",
+      "name": "practical_lights_flick_on",
+      "category": "lighting",
+      "wow_factor": 8,
+      "clip_position": "closing",
+      "match": {
+        "subject_type": [
+          "interior_living",
+          "exterior_facade"
+        ],
+        "time_of_day": [
+          "dusk",
+          "blue_hour"
+        ],
+        "theme_cluster": [
+          "night_outro",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Interior {subject} at dusk, ceiling lights flicker on one by one illuminating rooms progressively",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"eq=brightness='0.08*floor(t)'\" out.mp4",
+      "pairs_with": [
+        "T008",
+        "T012"
+      ],
+      "storyboard_note": "Home coming to life"
+    },
+    {
+      "id": "T068",
+      "name": "parallax_foreground_track",
+      "category": "camera",
+      "wow_factor": 7,
+      "clip_position": "middle",
+      "match": {
+        "depth_layers": [
+          2,
+          3
+        ],
+        "architectural_features": [
+          "landscaping"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "view_anchor"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera tracks laterally, foreground trees or columns blur past, {subject} stays sharp in distance, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw*0.75:ih:t*20:0,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T027",
+        "T002"
+      ],
+      "storyboard_note": "Depth equals cinematic"
+    },
+    {
+      "id": "T069",
+      "name": "triple_flash_cut",
+      "category": "cut",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "wow_elements": "not empty",
+        "theme_cluster": [
+          "amenity_flex",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Single angle shot of {subject} at {time_of_day}",
+        "duration": "3",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i a.mp4 -i b.mp4 -i c.mp4 -filter_complex \"[0]trim=0:0.35[a];[1]trim=0:0.35[b];[2]trim=0:0.35[c];[a][b][c]concat=n=3\" out.mp4",
+      "pairs_with": [
+        "T036",
+        "T082"
+      ],
+      "storyboard_note": "Three angles one second \u2014 energy spike"
+    },
+    {
+      "id": "T070",
+      "name": "reveal_behind_landscape",
+      "category": "spatial",
+      "wow_factor": 8,
+      "clip_position": "opening",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "aerial_wide"
+        ],
+        "architectural_features": [
+          "landscaping"
+        ],
+        "camera_height": [
+          "elevated"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera rises from behind hill or hedgerow, {subject} gradually reveals as horizon drops, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw:ih:0:ih-t*22,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T049",
+        "T006"
+      ],
+      "storyboard_note": "Landscape parts to reveal property"
+    },
+    {
+      "id": "T071",
+      "name": "slow_zoom_out_from_detail",
+      "category": "camera",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "detail_macro",
+          "interior_living"
+        ],
+        "theme_cluster": [
+          "material_detail",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Tight on {subject} architectural texture, slowly zooms out to contextualise, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='2.2-0.22*t':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080\" out.mp4",
+      "pairs_with": [
+        "T020",
+        "T041"
+      ],
+      "storyboard_note": "Detail out to context"
+    },
+    {
+      "id": "T072",
+      "name": "golden_to_blue_hour",
+      "category": "lighting",
+      "wow_factor": 8,
+      "clip_position": "closing",
+      "match": {
+        "time_of_day": [
+          "golden_hour",
+          "blue_hour",
+          "dusk"
+        ],
+        "theme_cluster": [
+          "night_outro",
+          "view_anchor"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Same exterior {subject} shot, golden hour warmth cools to blue hour dusk in one locked clip",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"colorbalance=bs='-0.01*t':ms='0.006*t':hs='0.004*t'\" out.mp4",
+      "pairs_with": [
+        "T025",
+        "T053"
+      ],
+      "storyboard_note": "Day to night in camera"
+    },
+    {
+      "id": "T073",
+      "name": "hyperlapse_driveway_approach",
+      "category": "speed",
+      "wow_factor": 8,
+      "clip_position": "opening",
+      "match": {
+        "subject_type": [
+          "landscape",
+          "exterior_facade"
+        ],
+        "architectural_features": [
+          "driveway",
+          "gate"
+        ],
+        "theme_cluster": [
+          "arrival"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Hyperlapse style approach through gates up driveway toward {subject} entrance, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"setpts=0.2*PTS,deshake\" -r 30 out.mp4",
+      "pairs_with": [
+        "T038",
+        "T043"
+      ],
+      "storyboard_note": "Compressed arrival journey"
+    },
+    {
+      "id": "T074",
+      "name": "colour_wipe_transition",
+      "category": "cut",
+      "wow_factor": 6,
+      "clip_position": "any",
+      "match": {
+        "dominant_colors": "strong saturated present",
+        "theme_cluster": [
+          "luxury_flow",
+          "amenity_flex"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Shot ending on saturated colored wall or surface of {subject}",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i in.mp4 -i out.mp4 -filter_complex \"[0][1]xfade=transition=hlslice:duration=0.4:offset=2.6\" out.mp4",
+      "pairs_with": [
+        "T019",
+        "T057"
+      ],
+      "storyboard_note": "Colour as transition medium"
+    },
+    {
+      "id": "T075",
+      "name": "trombone_zoom_pull",
+      "category": "camera",
+      "wow_factor": 9,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "interior_living",
+          "amenity_sport"
+        ],
+        "depth_layers": [
+          2,
+          3
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "amenity_flex"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Trombone zoom on {subject}, camera dollies forward while zooming out, subject stays same size, perspective shifts dramatically, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='1.6-0.07*t':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1\" out.mp4",
+      "pairs_with": [
+        "T013",
+        "T032"
+      ],
+      "storyboard_note": "Vertigo 2.0 \u2014 most disorienting in best way"
+    },
+    {
+      "id": "T076",
+      "name": "fpv_through_arch_gate",
+      "category": "spatial",
+      "wow_factor": 9,
+      "clip_position": "opening",
+      "match": {
+        "architectural_features": [
+          "gate",
+          "arches",
+          "columns"
+        ],
+        "theme_cluster": [
+          "arrival"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "FPV drone flies through arch or gate into estate, frame fills with arch then opens to reveal property beyond, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"vignette=angle=PI/3:mode=backward:eval=frame\" out.mp4",
+      "pairs_with": [
+        "T043",
+        "T049"
+      ],
+      "storyboard_note": "Portal moment \u2014 entering a new world"
+    },
+    {
+      "id": "T077",
+      "name": "rack_focus_near_to_far",
+      "category": "camera",
+      "wow_factor": 7,
+      "clip_position": "middle",
+      "match": {
+        "depth_layers": [
+          2,
+          3
+        ],
+        "subject_type": [
+          "exterior_facade",
+          "interior_living",
+          "pool_area"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "view_anchor"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Foreground bokeh gradually sharpens revealing {subject} in sharp focus behind, rack focus near to far, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"unsharp=5:5:'1.5*t/8':5:5:0\" out.mp4",
+      "pairs_with": [
+        "T068",
+        "T027"
+      ],
+      "storyboard_note": "Focus draw \u2014 reveals through blur"
+    },
+    {
+      "id": "T078",
+      "name": "snap_reframe_on_beat",
+      "category": "cut",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "amenity_sport",
+          "interior_living"
+        ],
+        "theme_cluster": [
+          "amenity_flex",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Wide shot of {subject} at {time_of_day} locked off",
+        "duration": "3",
+        "resolution": "1080p"
+      },
+      "second_clip_prompt": "Tight medium shot same {subject} same angle",
+      "ffmpeg": "ffmpeg -i wide.mp4 -i tight.mp4 -filter_complex \"[0]trim=0:2[a];[1]trim=0:5[b];[a][b]concat\" out.mp4",
+      "pairs_with": [
+        "T041",
+        "T082"
+      ],
+      "storyboard_note": "Scale contrast on the beat"
+    },
+    {
+      "id": "T079",
+      "name": "slow_reveal_snap_to_speed",
+      "category": "speed",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "motion_potential": [
+          "push_ideal",
+          "tilt_ideal"
+        ],
+        "theme_cluster": [
+          "amenity_flex",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Ultra slow cinematic reveal of {subject} entrance gate or facade, languid and graceful",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"setpts=if(lt(T\\,4)\\,3*PTS\\,0.4*(PTS-(4*3-4)))\" out.mp4",
+      "pairs_with": [
+        "T001",
+        "T060"
+      ],
+      "storyboard_note": "Slow then sudden \u2014 maximum contrast"
+    },
+    {
+      "id": "T080",
+      "name": "underwater_pool_upward",
+      "category": "spatial",
+      "wow_factor": 9,
+      "clip_position": "middle",
+      "match": {
+        "architectural_features": [
+          "pool",
+          "infinity_edge"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "material_detail"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera beneath pool surface looking up at sky through water, ripples distort light and sky above, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"ripple=amplitude=3:speed=2\" out.mp4",
+      "pairs_with": [
+        "T017",
+        "T054"
+      ],
+      "storyboard_note": "Unexpected POV \u2014 never seen before angle"
+    },
+    {
+      "id": "T081",
+      "name": "boom_up_cityscape_reveal",
+      "category": "camera",
+      "wow_factor": 9,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "pool_area",
+          "exterior_facade"
+        ],
+        "architectural_features": [
+          "skyline_view"
+        ],
+        "theme_cluster": [
+          "view_anchor",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera starts at pool level booms straight up revealing city skyline behind {subject} property, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw:ih:0:ih*0.7-t*22,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T027",
+        "T003"
+      ],
+      "storyboard_note": "Property plus location in one move"
+    },
+    {
+      "id": "T082",
+      "name": "smash_cut_macro",
+      "category": "cut",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "aerial_wide",
+          "detail_macro"
+        ],
+        "theme_cluster": [
+          "scale_reveal",
+          "material_detail"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Wide aerial of {subject} full estate, {time_of_day}",
+        "duration": "3",
+        "resolution": "1080p"
+      },
+      "second_clip_prompt": "Extreme macro close up of architectural surface detail of {subject}",
+      "ffmpeg": "ffmpeg -i wide.mp4 -i macro.mp4 -filter_complex \"[0]trim=0:2.5[a];[1]trim=0:4[b];[a][b]concat\" out.mp4",
+      "pairs_with": [
+        "T041",
+        "T069"
+      ],
+      "storyboard_note": "Smash from infinite to intimate"
+    },
+    {
+      "id": "T083",
+      "name": "harsh_to_magic_hour",
+      "category": "lighting",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "lighting_quality": [
+          "top_lit",
+          "flat"
+        ],
+        "time_of_day": [
+          "midday",
+          "overcast"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "{subject} in harsh midday light, shifts to soft diffused magic hour warmth",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"eq=contrast='1-0.015*t':brightness='0.008*t',colorbalance=rs='0.005*t'\" out.mp4",
+      "pairs_with": [
+        "T029",
+        "T037"
+      ],
+      "storyboard_note": "Makes bad lighting good in post"
+    },
+    {
+      "id": "T084",
+      "name": "crane_aerial_to_ground",
+      "category": "camera",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "aerial_wide",
+          "exterior_facade"
+        ],
+        "camera_height": [
+          "aerial"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Start high aerial above {subject}, crane descends to eye level ground shot of entrance, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='2-0.18*t':d=1,crop=iw:ih:0:t*8\" out.mp4",
+      "pairs_with": [
+        "T022",
+        "T084"
+      ],
+      "storyboard_note": "Aerial landing"
+    },
+    {
+      "id": "T085",
+      "name": "mirror_reflection_push",
+      "category": "spatial",
+      "wow_factor": 8,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "interior_bathroom",
+          "interior_bedroom"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "material_detail"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera approaches mirror in {subject}, reflection reveals room behind camera, meta reveal, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"hflip,zoompan=z='1+0.04*t':d=1\" out.mp4",
+      "pairs_with": [
+        "T011",
+        "T045"
+      ],
+      "storyboard_note": "Mirror trick \u2014 unexpected POV"
+    },
+    {
+      "id": "T086",
+      "name": "overcranked_whip_transition",
+      "category": "speed",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "motion_potential": [
+          "pan_ideal"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "amenity_flex"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera whips left across {subject} at high speed, motion blur extreme",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"minterpolate=fps=60,setpts=4*PTS,mblur=power=0.5\" out.mp4",
+      "pairs_with": [
+        "T026",
+        "T046"
+      ],
+      "storyboard_note": "Slow whip \u2014 ethereal version"
+    },
+    {
+      "id": "T087",
+      "name": "pedestal_up_interior",
+      "category": "camera",
+      "wow_factor": 7,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "interior_living",
+          "interior_bedroom"
+        ],
+        "architectural_features": [
+          "chandelier",
+          "staircase"
+        ],
+        "theme_cluster": [
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera pedestal straight up from floor to double-height ceiling of {subject} in one continuous move, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw:ih*0.8:0:ih*0.2-t*16,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T028",
+        "T059"
+      ],
+      "storyboard_note": "Floor to sky inside \u2014 height flex"
+    },
+    {
+      "id": "T088",
+      "name": "car_headlights_sweep",
+      "category": "lighting",
+      "wow_factor": 7,
+      "clip_position": "closing",
+      "match": {
+        "subject_type": [
+          "exterior_facade"
+        ],
+        "time_of_day": [
+          "night",
+          "blue_hour"
+        ],
+        "theme_cluster": [
+          "night_outro",
+          "arrival"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Night exterior {subject}, car headlights sweep across facade as vehicle enters gate, dramatic sweep of light",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"eq=brightness=if(between(t\\,1\\,2.5)\\,0.3*sin(3.14*(t-1)/1.5)\\,0)\" out.mp4",
+      "pairs_with": [
+        "T012",
+        "T067"
+      ],
+      "storyboard_note": "Story moment \u2014 property welcoming"
+    },
+    {
+      "id": "T089",
+      "name": "pov_walk_in_transition",
+      "category": "cut",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "interior_living"
+        ],
+        "architectural_features": [
+          "gate",
+          "driveway"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "luxury_flow"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "First person POV approaching front door of {subject}, hand reaches for handle, {time_of_day}",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "second_clip_prompt": "Interior {subject} living space from just inside front door looking in",
+      "ffmpeg": "ffmpeg -i pov.mp4 -i interior.mp4 -filter_complex \"[0][1]xfade=transition=fade:duration=0.4:offset=3.6\" out.mp4",
+      "pairs_with": [
+        "T011",
+        "T038"
+      ],
+      "storyboard_note": "Viewer becomes the buyer"
+    },
+    {
+      "id": "T090",
+      "name": "helicopter_circle_descent",
+      "category": "camera",
+      "wow_factor": 9,
+      "clip_position": "opening",
+      "match": {
+        "subject_type": [
+          "aerial_wide",
+          "exterior_facade"
+        ],
+        "camera_height": [
+          "aerial"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Helicopter style wide orbit while simultaneously descending, closing in on {subject} estate from high aerial to mid level, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"rotate=t*0.35:fillcolor=black,zoompan=z='1+0.035*t':d=1\" out.mp4",
+      "pairs_with": [
+        "T003",
+        "T061"
+      ],
+      "storyboard_note": "Helicopter approach \u2014 premium feel"
+    },
+    {
+      "id": "T091",
+      "name": "time_remap_punch_in",
+      "category": "speed",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "motion_potential": [
+          "push_ideal",
+          "drone_ideal"
+        ],
+        "theme_cluster": [
+          "amenity_flex",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Slow approach toward {subject} at {time_of_day}, steady and measured",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"setpts=if(lt(T\\,3)\\,PTS\\,0.3*(PTS-3)+3)\" out.mp4",
+      "pairs_with": [
+        "T001",
+        "T060"
+      ],
+      "storyboard_note": "Normal then sudden snap to fast"
+    },
+    {
+      "id": "T092",
+      "name": "corner_reveal_turn",
+      "category": "spatial",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "amenity_sport"
+        ],
+        "motion_potential": [
+          "pan_ideal"
+        ],
+        "theme_cluster": [
+          "amenity_flex",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera moves along exterior wall of {subject} then turns corner revealing surprise amenity beyond",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw*0.85:ih:t*14:0,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T006",
+        "T039"
+      ],
+      "storyboard_note": "Corner as reveal device"
+    },
+    {
+      "id": "T093",
+      "name": "strobe_exposure_sequence",
+      "category": "lighting",
+      "wow_factor": 7,
+      "clip_position": "any",
+      "match": {
+        "wow_elements": "not empty",
+        "theme_cluster": [
+          "amenity_flex",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Same angle of {subject} at {time_of_day}",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"eq=brightness=if(mod(floor(t*6)\\,2)\\,-0.3\\,0.2)\" out.mp4",
+      "pairs_with": [
+        "T033",
+        "T066"
+      ],
+      "storyboard_note": "Strobe synced to music transients"
+    },
+    {
+      "id": "T094",
+      "name": "bird_drop_to_ground",
+      "category": "camera",
+      "wow_factor": 9,
+      "clip_position": "opening",
+      "match": {
+        "subject_type": [
+          "aerial_wide",
+          "exterior_facade"
+        ],
+        "camera_height": [
+          "aerial"
+        ],
+        "theme_cluster": [
+          "arrival",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Drone at high altitude drops rapidly in free fall toward {subject} entrance, pulls up to hover just above ground, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='2.5-0.3*t':d=1:s=1920x1080\" out.mp4",
+      "pairs_with": [
+        "T001",
+        "T043"
+      ],
+      "storyboard_note": "Most dramatic opener available"
+    },
+    {
+      "id": "T095",
+      "name": "360_spin_hard_cut",
+      "category": "cut",
+      "wow_factor": 8,
+      "clip_position": "any",
+      "match": {
+        "motion_potential": [
+          "orbit_ideal"
+        ],
+        "theme_cluster": [
+          "amenity_flex",
+          "scale_reveal"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera rotates full 360 around its axis on {subject}, ends facing opposite direction",
+        "duration": "4",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i spin.mp4 -i next.mp4 -filter_complex \"[0]trim=0:2.5[a];[1]trim=0:5[b];[a][b]concat\" out.mp4",
+      "pairs_with": [
+        "T026",
+        "T003"
+      ],
+      "storyboard_note": "Disorientation then reveal"
+    },
+    {
+      "id": "T096",
+      "name": "bowling_alley_floor_push",
+      "category": "spatial",
+      "wow_factor": 8,
+      "clip_position": "middle",
+      "match": {
+        "architectural_features": [
+          "bowling_alley"
+        ],
+        "theme_cluster": [
+          "amenity_flex"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera at floor level pushes down bowling alley lane toward pins, extreme low angle perspective",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"zoompan=z='1+0.08*t':x='iw/2-(iw/zoom/2)':y='ih*0.75-(ih/zoom*0.75)':d=1\" out.mp4",
+      "pairs_with": [
+        "T065",
+        "T082"
+      ],
+      "storyboard_note": "POV only possible in ultra-luxury homes"
+    },
+    {
+      "id": "T097",
+      "name": "moonrise_ambient_shift",
+      "category": "lighting",
+      "wow_factor": 7,
+      "clip_position": "closing",
+      "match": {
+        "time_of_day": [
+          "dusk",
+          "blue_hour",
+          "night"
+        ],
+        "theme_cluster": [
+          "night_outro"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "{subject} exterior at dusk, moon rises, blue ambient light fills shadows, atmosphere becomes cinematic",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"colorbalance=bs='0.008*t':ms='0.004*t':hs='-0.004*t'\" out.mp4",
+      "pairs_with": [
+        "T053",
+        "T072"
+      ],
+      "storyboard_note": "Poetic closing light"
+    },
+    {
+      "id": "T098",
+      "name": "slow_diagonal_boom",
+      "category": "camera",
+      "wow_factor": 6,
+      "clip_position": "middle",
+      "match": {
+        "subject_type": [
+          "exterior_facade",
+          "pool_area"
+        ],
+        "motion_potential": [
+          "tilt_ideal",
+          "pan_ideal"
+        ],
+        "theme_cluster": [
+          "luxury_flow",
+          "view_anchor"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera moves diagonally up and right simultaneously, {subject} stays centered, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"crop=iw*0.8:ih*0.8:t*10:ih*0.2-t*10,scale=1920:1080\" out.mp4",
+      "pairs_with": [
+        "T023",
+        "T002"
+      ],
+      "storyboard_note": "Unusual axis \u2014 stands out"
+    },
+    {
+      "id": "T099",
+      "name": "speed_ramp_freeze_at_reveal",
+      "category": "speed",
+      "wow_factor": 9,
+      "clip_position": "any",
+      "match": {
+        "wow_elements": "not empty",
+        "theme_cluster": [
+          "scale_reveal",
+          "amenity_flex"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Camera rushes fast toward {subject} building principal view, {time_of_day}",
+        "duration": "8",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i clip.mp4 -vf \"minterpolate=fps=60,setpts=if(lt(T\\,3)\\,0.3*PTS\\,if(lt(T\\,4)\\,999*PTS\\,PTS))\" out.mp4",
+      "pairs_with": [
+        "T009",
+        "T060"
+      ],
+      "storyboard_note": "Rush then freeze on hero frame"
+    },
+    {
+      "id": "T100",
+      "name": "rapid_montage_finale",
+      "category": "cut",
+      "wow_factor": 10,
+      "clip_position": "closing",
+      "match": {
+        "theme_cluster": [
+          "amenity_flex",
+          "scale_reveal",
+          "night_outro"
+        ]
+      },
+      "fal": {
+        "model": "fal-ai/veo3.1/image-to-video",
+        "prompt": "Single wide shot of {subject} key amenity or facade at {time_of_day}",
+        "duration": "3",
+        "resolution": "1080p"
+      },
+      "ffmpeg": "ffmpeg -i a.mp4 -i b.mp4 -i c.mp4 -i d.mp4 -i e.mp4 -filter_complex \"[0]trim=0:0.4,mblur=power=0.35[a];[1]trim=0:0.4,mblur=power=0.35[b];[2]trim=0:0.4,mblur=power=0.35[c];[3]trim=0:0.4,mblur=power=0.35[d];[4]trim=0:0.4,mblur=power=0.35[e];[a][b][c][d][e]concat=n=5\" out.mp4",
+      "pairs_with": [
+        "T069",
+        "T036"
+      ],
+      "storyboard_note": "Burn it into their retinas \u2014 5 spaces 2 seconds"
+    }
+  ],
+  "storyboard_output_schema": {
+    "storyboard": [
+      {
+        "slot": "integer",
+        "technique_id": "string",
+        "technique_name": "string",
+        "source_image": "filename",
+        "theme_cluster": "string",
+        "fal_prompt_resolved": "string \u2014 {subject} and {time_of_day} filled from image analysis",
+        "fal_model": "string",
+        "fal_params": {
+          "image_url": "string",
+          "prompt": "string",
+          "duration": "string",
+          "resolution": "string",
+          "audio": false
+        },
+        "ffmpeg_command": "string with actual filenames",
+        "output_filename": "string",
+        "expected_duration_seconds": "number",
+        "wow_factor": "integer",
+        "storyboard_note": "string",
+        "pairs_with_slot": "integer or null",
+        "bridge_instructions": {
+          "strategy": "handshake | reveal | whip_pan | simple_cut | match_cut",
+          "visual_distance_score": "number 1-10",
+          "duration_seconds": "only for handshake FLFV: 1.5 for close pairs, 2.5-3.0 for medium pairs, 4.0 for long spatial moves",
+          "movement_intensity": "calm | moderate | fast",
+          "egress_seam": "velocity, light, edge, and composition leaving this scene",
+          "ingress_seam": "velocity, light, edge, and composition entering the next scene",
+          "velocity_vector": "inherited camera inertia for the next scene, e.g. forward_dolly_25pct or pan_left_20pct",
+          "shared_anchors": [
+            "flooring, ceiling height, doorway, glass, window view, material texture, horizon, or light direction"
+          ],
+          "sandwich_prompt": {
+            "vector": "camera path from current image to next image",
+            "constraint": "camera plane, height, lens feel, exposure, and architecture preservation",
+            "pivot": "mid-bridge visible anchor or fallback blur/motion cover"
+          },
+          "fallback_reason": "why the agent should avoid FLFV if the pair would morph architecture"
+        },
+        "transition_logic": {
+          "strategy": "handshake | reveal | whip_pan | simple_cut | match_cut",
+          "justification": "the director's reason for this natural edit grammar",
+          "spatial_continuity": "same_space | adjacent_space | shared_shape | distant | unrelated",
+          "technical_execution": "flfv_bridge | speedramp_cut | blur_slide | clean_cut | match_dissolve",
+          "risk_notes": "architecture morph, velocity jerk, exposure shift, or compositional mismatch risks and how the selected edit avoids them"
+        },
+        "ramp_profile": "cruise | reveal | impact",
+        "second_clip_needed": "boolean \u2014 true if technique needs two FAL generations",
+        "second_fal_prompt": "string or null"
+      }
+    ]
+  },
+  "generation_queue_schema": {
+    "queue": [
+      {
+        "slot": "integer",
+        "status": "pending",
+        "fal_endpoint": "string",
+        "fal_input": {},
+        "ffmpeg": "string",
+        "output": "string",
+        "estimated_cost_usd": "number"
+      }
+    ],
+    "total_clips": "integer",
+    "estimated_total_cost_usd": "number",
+    "estimated_runtime_seconds": "number"
+  },
+  "agent_system_prompt": "You are a world-class luxury real-estate director and film editor. Analyze uploaded property images, choose the strongest story order, and decide the most natural edit grammar for every outgoing pair. Do not force AI bridges that look like morphing soup. Use handshake only when the images are same-space or a plausible walkable path; use reveal for detail/hero proof points; use whip_pan for distant high-momentum seams; use simple_cut for unrelated rooms or hard music beats; use match_cut for strong shape or composition rhymes. FAL is the camera, but the agent is the director. Output complete generation_queue JSON with transition_logic, ramp_profile, bridge_instructions, cost, and runtime estimates."
+}
