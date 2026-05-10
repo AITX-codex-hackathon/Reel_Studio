@@ -8,7 +8,7 @@ import { ArrowRight, Film, Plus, Sparkles, Wand2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { api, type Health, type Project } from "@/lib/api";
+import { api, type Project } from "@/lib/api";
 import { NewReelButton } from "@/components/auth/NewReelButton";
 
 const SHOWCASE_IMAGES = [
@@ -72,15 +72,12 @@ function HeroBackground() {
 
 export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [health, setHealth] = useState<Health | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([api.listProjects(), api.health()])
-      .then(([p, h]) => {
-        setProjects(p);
-        setHealth(h);
-      })
+    api
+      .listProjects()
+      .then(setProjects)
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -119,19 +116,6 @@ export default function DashboardPage() {
       </section>
 
       <div className="mx-auto max-w-7xl px-6 space-y-16 mt-12 pb-10">
-        {/* Provider status */}
-        {health && (
-          <section className="flex flex-wrap gap-2">
-            {Object.entries(health.providers).map(([name, on]) => (
-              <Badge key={name} variant={on ? "success" : "muted"}>
-                <span className={`w-1.5 h-1.5 rounded-full ${on ? "bg-emerald-400" : "bg-ink-subtle/50"}`} />
-                {name}
-                <span className="text-ink-subtle">{on ? "ready" : "no key"}</span>
-              </Badge>
-            ))}
-          </section>
-        )}
-
         {/* Projects */}
         <section>
           <div className="flex items-end justify-between mb-6">

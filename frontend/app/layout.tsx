@@ -16,7 +16,7 @@ const display = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Realstate — AI Reels for Real Estate",
+  title: "Reelstate — AI Reels for Real Estate",
   description: "Turn property photos into cinematic reels powered by AI.",
 };
 
@@ -83,7 +83,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </div>
                 <div className="flex flex-col leading-tight">
                   <span className="font-display font-bold text-white tracking-tight text-lg">
-                    Realstate
+                    Reelstate
                   </span>
                   <span className="text-[10px] text-ink-subtle uppercase tracking-wider -mt-0.5">
                     AI Reel Studio
@@ -110,7 +110,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </header>
           <main>{children}</main>
           <footer className="mx-auto max-w-7xl px-6 py-10 text-xs text-ink-subtle border-t border-white/[0.06] mt-16">
-            &copy; {new Date().getFullYear()} Realstate. All rights reserved.
+            &copy; {new Date().getFullYear()} Reelstate. All rights reserved.
           </footer>
         </Providers>
       </body>

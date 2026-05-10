@@ -19,7 +19,7 @@ The translator honors *exact* timing requests like "music from 4s to 8s" or "8s 
 
 ### 2. Hand-authored YAML
 
-Drop a `*.yaml` file into `backend/realstate/templates/`. The format is documented below.
+Drop a `*.yaml` file into `backend/reelstate/templates/`. The format is documented below.
 
 ---
 

@@ -145,10 +145,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         <Card>
           <CardHeader>
             <CardTitle>Upload property photos</CardTitle>
-            <CardDescription>
-              Drop your property images — exterior, interior, details. Higher quality photos
-              produce better reels.
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <UploadDropzone

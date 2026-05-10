@@ -111,7 +111,7 @@ SessionLocal: sessionmaker | None = None
 
 def init_db() -> None:
     global _engine, SessionLocal
-    db_url = os.getenv("DATABASE_URL", "sqlite:///./storage_data/realstate.db")
+    db_url = os.getenv("DATABASE_URL", "sqlite:///./storage_data/reelstate.db")
     _engine = create_engine(
         db_url,
         connect_args={"check_same_thread": False} if db_url.startswith("sqlite") else {},

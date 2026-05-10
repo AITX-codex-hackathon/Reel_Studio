@@ -58,7 +58,7 @@ class TemplateLoader:
 
     def __init__(self, templates_dir: Optional[Path] = None):
         if templates_dir is None:
-            # __file__ is .../realstate/storage/filesystem.py — go up to package root
+            # __file__ is .../reelstate/storage/filesystem.py — go up to package root
             templates_dir = Path(__file__).resolve().parent.parent / "templates"
         self.templates_dir = templates_dir
 

@@ -16,7 +16,7 @@ def _first_env(*names: str, default: str = "") -> str:
 
 
 class Settings(BaseModel):
-    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./storage_data/realstate.db")
+    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./storage_data/reelstate.db")
     storage_root: str = os.getenv("STORAGE_ROOT", "./storage_data")
     audio_library_root: str = os.getenv("AUDIO_LIBRARY_ROOT", "./audio_library")
     cors_origins: list[str] = [

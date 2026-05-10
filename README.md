@@ -1,4 +1,4 @@
-# Realstate — AI Reel Generator for Real Estate
+# Reelstate — AI Reel Generator for Real Estate
 
 An AI-powered platform that takes 50–150 property photos and produces a ~1-minute cinematic reel for Instagram. Built for AutoHDR's video team to replace manual editing with reproducible, template-driven generation.
 
@@ -97,7 +97,7 @@ Without keys, the system runs in **offline mode**: deterministic rule-based shot
 
 ## Templates
 
-Templates live in `backend/realstate/templates/*.yaml` — see `docs/template-authoring.md`. Bundled templates:
+Templates live in `backend/reelstate/templates/*.yaml` — see `docs/template-authoring.md`. Bundled templates:
 
 - `luxury-listing.yaml` — slow, cinematic, 60s, classical/ambient
 - `quick-flip.yaml` — fast cuts, 30s, upbeat
@@ -113,10 +113,10 @@ The **prompt translator agent** converts that into a valid YAML template.
 ## Project layout
 
 ```
-realstate/
+reelstate/
 ├── backend/                  # FastAPI + AI agents + render pipeline
 │   ├── main.py
-│   ├── realstate/
+│   ├── reelstate/
 │   │   ├── api/              # REST + WebSocket routes
 │   │   ├── models/           # Pydantic models (Shot, Storyboard, Template)
 │   │   ├── pipelines/        # ReelPipeline, MultiScalePipeline (draft+final)

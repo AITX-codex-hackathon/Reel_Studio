@@ -6,20 +6,20 @@ This document explains how the platform is built and how its components map to p
 
 A reel is a **storyboard**: an ordered list of **shots**, each anchored to a time range, with a still image (or generated frame), motion parameters, optional text overlay, and a transition into the next shot. A **template** is a parameterized storyboard that the AI agent fills in using the user's uploaded images.
 
-## Pattern mapping (LTX-Video → Realstate)
+## Pattern mapping (LTX-Video → Reelstate)
 
-| LTX-Video concept | Realstate equivalent | File |
+| LTX-Video concept | Reelstate equivalent | File |
 |---|---|---|
-| `ConditioningItem(media, frame_number, strength)` | `Shot(image, start_time, duration, motion_strength)` | [`backend/realstate/models/shot.py`](backend/realstate/models/shot.py) |
-| YAML configs (`configs/ltxv-*.yaml`) | Template YAMLs (`backend/realstate/templates/*.yaml`) | [`backend/realstate/templates/`](backend/realstate/templates/) |
-| `LTXVideoPipeline.__call__()` | `ReelPipeline.render()` | [`backend/realstate/pipelines/reel_pipeline.py`](backend/realstate/pipelines/reel_pipeline.py) |
-| `LTXMultiScalePipeline` (low-res preview → high-res refine) | `MultiPassRenderer` (draft preview → final 1080p/4K) | [`backend/realstate/pipelines/multiscale_pipeline.py`](backend/realstate/pipelines/multiscale_pipeline.py) |
-| `RectifiedFlowScheduler` (timestep schedule) | `PacingScheduler` (beat-aware shot timing) | [`backend/realstate/schedulers/pacing.py`](backend/realstate/schedulers/pacing.py) |
-| `SymmetricPatchifier` (latents → patches + coords) | `Storyboard` (template + images → resolved shot list with timing coords) | [`backend/realstate/models/storyboard.py`](backend/realstate/models/storyboard.py) |
-| Prompt enhancement chain (Florence-2 caption → Llama-3.2 refine) | Image analysis (OpenAI vision) → shot matcher → fallback to Nano Banana / fal | [`backend/realstate/agents/`](backend/realstate/agents/) |
-| `SkipLayerStrategy` (skip transformer blocks per timestep) | `EffectSkipStrategy` (skip color-grade on already-graded shots, skip Ken Burns on gen-motion shots) | [`backend/realstate/effects/`](backend/realstate/effects/) |
-| `ASPECT_RATIO_*_BIN` resolution snapping | Output aspect-ratio presets (9:16 reel, 1:1 grid, 16:9 web) | [`backend/realstate/render/encoder.py`](backend/realstate/render/encoder.py) |
-| `InferenceConfig` dataclass | `RenderConfig` Pydantic model | [`backend/realstate/models/render_config.py`](backend/realstate/models/render_config.py) |
+| `ConditioningItem(media, frame_number, strength)` | `Shot(image, start_time, duration, motion_strength)` | [`backend/reelstate/models/shot.py`](backend/reelstate/models/shot.py) |
+| YAML configs (`configs/ltxv-*.yaml`) | Template YAMLs (`backend/reelstate/templates/*.yaml`) | [`backend/reelstate/templates/`](backend/reelstate/templates/) |
+| `LTXVideoPipeline.__call__()` | `ReelPipeline.render()` | [`backend/reelstate/pipelines/reel_pipeline.py`](backend/reelstate/pipelines/reel_pipeline.py) |
+| `LTXMultiScalePipeline` (low-res preview → high-res refine) | `MultiPassRenderer` (draft preview → final 1080p/4K) | [`backend/reelstate/pipelines/multiscale_pipeline.py`](backend/reelstate/pipelines/multiscale_pipeline.py) |
+| `RectifiedFlowScheduler` (timestep schedule) | `PacingScheduler` (beat-aware shot timing) | [`backend/reelstate/schedulers/pacing.py`](backend/reelstate/schedulers/pacing.py) |
+| `SymmetricPatchifier` (latents → patches + coords) | `Storyboard` (template + images → resolved shot list with timing coords) | [`backend/reelstate/models/storyboard.py`](backend/reelstate/models/storyboard.py) |
+| Prompt enhancement chain (Florence-2 caption → Llama-3.2 refine) | Image analysis (OpenAI vision) → shot matcher → fallback to Nano Banana / fal | [`backend/reelstate/agents/`](backend/reelstate/agents/) |
+| `SkipLayerStrategy` (skip transformer blocks per timestep) | `EffectSkipStrategy` (skip color-grade on already-graded shots, skip Ken Burns on gen-motion shots) | [`backend/reelstate/effects/`](backend/reelstate/effects/) |
+| `ASPECT_RATIO_*_BIN` resolution snapping | Output aspect-ratio presets (9:16 reel, 1:1 grid, 16:9 web) | [`backend/reelstate/render/encoder.py`](backend/reelstate/render/encoder.py) |
+| `InferenceConfig` dataclass | `RenderConfig` Pydantic model | [`backend/reelstate/models/render_config.py`](backend/reelstate/models/render_config.py) |
 
 ## Layered architecture
 
@@ -126,9 +126,9 @@ All integrations degrade gracefully: missing API key → adapter returns `None` 
 
 ## Extensibility
 
-To add a new template: drop a YAML file into `backend/realstate/templates/`.
-To add a new effect: implement a function in `backend/realstate/effects/` that returns an FFmpeg filter string, register it in `effects/__init__.py`.
-To add a new generative provider: implement the adapter interface in `backend/realstate/integrations/`.
-To add a new agent: subclass `BaseAgent` in `backend/realstate/agents/`.
+To add a new template: drop a YAML file into `backend/reelstate/templates/`.
+To add a new effect: implement a function in `backend/reelstate/effects/` that returns an FFmpeg filter string, register it in `effects/__init__.py`.
+To add a new generative provider: implement the adapter interface in `backend/reelstate/integrations/`.
+To add a new agent: subclass `BaseAgent` in `backend/reelstate/agents/`.
 
 The whole system is designed so a pro video editor (without coding) authors templates in YAML or natural language, and the engineering team adds capabilities by implementing well-typed adapters.

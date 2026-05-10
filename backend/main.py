@@ -12,7 +12,7 @@ load_dotenv()
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
-from realstate.api import (  # noqa: E402
+from reelstate.api import (  # noqa: E402
     audio,
     files,
     projects,
@@ -22,27 +22,27 @@ from realstate.api import (  # noqa: E402
     uploads,
     ws,
 )
-from realstate.config import get_settings  # noqa: E402
-from realstate.storage import init_db  # noqa: E402
+from reelstate.config import get_settings  # noqa: E402
+from reelstate.storage import init_db  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-log = logging.getLogger("realstate")
+log = logging.getLogger("reelstate")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    log.info("Realstate API starting")
+    log.info("Reelstate API starting")
     yield
-    log.info("Realstate API stopping")
+    log.info("Reelstate API stopping")
 
 
 settings = get_settings()
 app = FastAPI(
-    title="Realstate API",
+    title="Reelstate API",
     description="AI-powered real estate reel generator",
     version="0.1.0",
     lifespan=lifespan,
@@ -65,8 +65,6 @@ def health() -> dict:
             "openai": bool(settings.openai_api_key),
             "fal": bool(settings.fal_key),
             "gemini_nano_banana": bool(settings.gemini_api_key),
-            "runway": bool(settings.runway_api_key),
-            "elevenlabs": bool(settings.elevenlabs_api_key),
         },
     }
 
