@@ -1,7 +1,6 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: "class",
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
@@ -10,46 +9,45 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Pink / purple / white palette
         primary: {
-          DEFAULT: "#7B2CBF", // deep purple
-          50: "#F6F0FB",
-          100: "#EDE0F7",
-          200: "#D7B8EE",
-          300: "#BC8FE2",
-          400: "#9D5BD2",
+          DEFAULT: "#7B2CBF",
+          50: "#1a0f2e",
+          100: "#231340",
+          200: "#3a1d6e",
+          300: "#5a2d9e",
+          400: "#6d2db5",
           500: "#7B2CBF",
-          600: "#6322A0",
-          700: "#4C197A",
-          800: "#36115A",
-          900: "#220A3A",
+          600: "#9340df",
+          700: "#a85eea",
+          800: "#c48ef2",
+          900: "#e0c4f9",
         },
         accent: {
-          DEFAULT: "#FF1493", // hot pink
-          50: "#FFE9F4",
-          100: "#FFCFE5",
-          200: "#FF9DCB",
-          300: "#FF6BB1",
-          400: "#FF3FA1",
+          DEFAULT: "#FF1493",
+          50: "#2d0a1e",
+          100: "#4a0f30",
+          200: "#7a1850",
+          300: "#b82075",
+          400: "#e01688",
           500: "#FF1493",
-          600: "#D80F7C",
-          700: "#A30C5E",
-          800: "#700842",
-          900: "#430527",
+          600: "#ff3da6",
+          700: "#ff6bba",
+          800: "#ff99d0",
+          900: "#ffcce8",
         },
         ink: {
-          DEFAULT: "#1A0F2E",
-          muted: "#5C4F75",
-          subtle: "#8B7FA8",
+          DEFAULT: "#ffffff",
+          muted: "#94909e",
+          subtle: "#5c5869",
         },
         surface: {
-          DEFAULT: "#FFFFFF",
-          alt: "#FBF7FE",
-          elevated: "#FFFFFF",
+          DEFAULT: "#14141f",
+          alt: "#0a0a0f",
+          elevated: "#1a1a28",
         },
         border: {
-          DEFAULT: "#EBDDF5",
-          strong: "#D7B8EE",
+          DEFAULT: "rgba(255,255,255,0.08)",
+          strong: "rgba(255,255,255,0.14)",
         },
       },
       fontFamily: {
@@ -60,14 +58,14 @@ const config: Config = {
         "gradient-brand":
           "linear-gradient(135deg, #FF1493 0%, #7B2CBF 50%, #5C1F95 100%)",
         "gradient-soft":
-          "linear-gradient(135deg, #FFE9F4 0%, #F6F0FB 50%, #EDE0F7 100%)",
+          "linear-gradient(135deg, rgba(255,20,147,0.1) 0%, rgba(123,44,191,0.08) 50%, rgba(92,31,149,0.06) 100%)",
         "gradient-subtle":
-          "linear-gradient(180deg, #FFFFFF 0%, #FBF7FE 100%)",
+          "linear-gradient(180deg, #14141f 0%, #0a0a0f 100%)",
       },
       boxShadow: {
-        "brand": "0 16px 40px -12px rgba(123, 44, 191, 0.35)",
-        "brand-soft": "0 8px 24px -8px rgba(255, 20, 147, 0.18)",
-        "card": "0 1px 3px rgba(26,15,46,0.06), 0 8px 24px -12px rgba(123,44,191,0.10)",
+        brand: "0 16px 40px -12px rgba(123, 44, 191, 0.4)",
+        "brand-soft": "0 8px 24px -8px rgba(255, 20, 147, 0.2)",
+        card: "0 1px 3px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.4)",
       },
       borderRadius: {
         xl: "0.875rem",
@@ -79,7 +77,7 @@ const config: Config = {
           from: { opacity: "0", transform: "translateY(4px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
-        "shimmer": {
+        shimmer: {
           "0%": { backgroundPosition: "-200% 0" },
           "100%": { backgroundPosition: "200% 0" },
         },
@@ -87,11 +85,36 @@ const config: Config = {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.5" },
         },
+        float: {
+          "0%, 100%": { transform: "translateY(0px)" },
+          "50%": { transform: "translateY(-10px)" },
+        },
+        "kb-zoom-in": {
+          "0%": { transform: "scale(1) translate(0, 0)" },
+          "100%": { transform: "scale(1.15) translate(-2%, -1%)" },
+        },
+        "kb-zoom-out": {
+          "0%": { transform: "scale(1.18) translate(-2%, -2%)" },
+          "100%": { transform: "scale(1) translate(0, 0)" },
+        },
+        "kb-slide-left": {
+          "0%": { transform: "scale(1.08) translate(3%, 0)" },
+          "100%": { transform: "scale(1.12) translate(-3%, -1%)" },
+        },
+        "kb-slide-right": {
+          "0%": { transform: "scale(1.08) translate(-3%, 0)" },
+          "100%": { transform: "scale(1.12) translate(3%, 1%)" },
+        },
       },
       animation: {
         "fade-in": "fade-in 0.3s ease-out",
-        "shimmer": "shimmer 2s linear infinite",
+        shimmer: "shimmer 2s linear infinite",
         "pulse-soft": "pulse-soft 2.5s cubic-bezier(0.4,0,0.6,1) infinite",
+        float: "float 6s ease-in-out infinite",
+        "kb-zoom-in": "kb-zoom-in 5s ease-out forwards",
+        "kb-zoom-out": "kb-zoom-out 5s ease-out forwards",
+        "kb-slide-left": "kb-slide-left 5s ease-out forwards",
+        "kb-slide-right": "kb-slide-right 5s ease-out forwards",
       },
     },
   },

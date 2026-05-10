@@ -28,10 +28,10 @@ export function RenderProgressCard({ projectId, job, liveProgress }: Props) {
       className={cn(
         "rounded-2xl border p-5 transition-colors",
         isDone
-          ? "border-emerald-200 bg-emerald-50/40"
+          ? "border-emerald-800/40 bg-emerald-900/20"
           : isError
-            ? "border-red-200 bg-red-50/40"
-            : "border-border/60 bg-white",
+            ? "border-red-800/40 bg-red-900/20"
+            : "border-white/[0.08] bg-[#14141f]",
       )}
     >
       <div className="flex items-center gap-3">
@@ -39,9 +39,9 @@ export function RenderProgressCard({ projectId, job, liveProgress }: Props) {
           className={cn(
             "w-10 h-10 rounded-xl flex items-center justify-center",
             isDone
-              ? "bg-emerald-100 text-emerald-700"
+              ? "bg-emerald-900/40 text-emerald-400"
               : isError
-                ? "bg-red-100 text-red-700"
+                ? "bg-red-900/40 text-red-400"
                 : "bg-gradient-brand text-white",
           )}
         >
@@ -89,7 +89,7 @@ export function RenderProgressCard({ projectId, job, liveProgress }: Props) {
       )}
 
       {isError && job.error && (
-        <pre className="mt-3 text-xs text-red-700 bg-red-50 rounded-lg p-3 overflow-auto whitespace-pre-wrap">
+        <pre className="mt-3 text-xs text-red-400 bg-red-900/20 rounded-lg p-3 overflow-auto whitespace-pre-wrap">
           {job.error}
         </pre>
       )}

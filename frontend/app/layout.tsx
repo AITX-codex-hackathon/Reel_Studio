@@ -17,7 +17,7 @@ const display = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: "Realstate — AI Reels for Real Estate",
-  description: "Turn 50–150 property photos into a cinematic 1-minute reel. Powered by AI.",
+  description: "Turn property photos into cinematic reels powered by AI.",
 };
 
 const stripExtensionAttributesScript = `
@@ -69,52 +69,52 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${display.variable}`} suppressHydrationWarning>
       <body className="min-h-screen font-sans" suppressHydrationWarning>
-        <Providers>
-          <Script
-            id="strip-extension-hydration-attrs"
-            strategy="beforeInteractive"
-            dangerouslySetInnerHTML={{ __html: stripExtensionAttributesScript }}
-          />
-          <header className="sticky top-0 z-40 glass border-b border-border/40">
-            <div className="mx-auto max-w-7xl px-6 h-16 flex items-center justify-between">
-              <Link href="/" className="flex items-center gap-2 group">
-                <div className="w-8 h-8 rounded-lg bg-gradient-brand flex items-center justify-center shadow-brand-soft group-hover:scale-105 transition-transform">
-                  <Sparkles className="w-4 h-4 text-white" strokeWidth={2.5} />
-                </div>
-                <div className="flex flex-col leading-tight">
-                  <span className="font-display font-bold text-ink tracking-tight">
-                    Realstate
-                  </span>
-                  <span className="text-[10px] text-ink-subtle uppercase tracking-wider -mt-0.5">
-                    AI Reel Studio
-                  </span>
-                </div>
+        <Script
+          id="strip-extension-hydration-attrs"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: stripExtensionAttributesScript }}
+        />
+        <header className="sticky top-0 z-40 glass">
+          <div className="mx-auto max-w-7xl px-6 h-16 flex items-center justify-between">
+            <Link href="/" className="flex items-center gap-2.5 group">
+              <div className="w-9 h-9 rounded-xl bg-gradient-brand flex items-center justify-center shadow-brand-soft group-hover:scale-105 transition-transform">
+                <Sparkles className="w-4.5 h-4.5 text-white" strokeWidth={2.5} />
+              </div>
+              <div className="flex flex-col leading-tight">
+                <span className="font-display font-bold text-white tracking-tight text-lg">
+                  Realstate
+                </span>
+                <span className="text-[10px] text-ink-subtle uppercase tracking-wider -mt-0.5">
+                  AI Reel Studio
+                </span>
+              </div>
+            </Link>
+            <nav className="flex items-center gap-1 text-sm">
+              <Link
+                href="/"
+                className="px-3 py-2 rounded-lg text-ink-muted hover:text-white hover:bg-white/[0.06] transition-colors"
+              >
+                Projects
               </Link>
-              <nav className="flex items-center gap-1 text-sm">
-                <Link
-                  href="/"
-                  className="px-3 py-2 rounded-lg text-ink-muted hover:text-ink hover:bg-primary-50 transition-colors"
-                >
-                  Projects
-                </Link>
-                <Link
-                  href="/templates"
-                  className="px-3 py-2 rounded-lg text-ink-muted hover:text-ink hover:bg-primary-50 transition-colors"
-                >
-                  Templates
-                </Link>
-                <NewReelButton isHeader>
-                  New Reel
-                </NewReelButton>
-                <UserNav />
-              </nav>
-            </div>
-          </header>
-          <main className="mx-auto max-w-7xl px-6 py-10">{children}</main>
-          <footer className="mx-auto max-w-7xl px-6 py-10 text-xs text-ink-subtle border-t border-border/40 mt-16">
-            Built with FFmpeg, OpenAI, Nano Banana · Lifted from LTX-Video patterns
-          </footer>
-        </Providers>
+              <Link
+                href="/templates"
+                className="px-3 py-2 rounded-lg text-ink-muted hover:text-white hover:bg-white/[0.06] transition-colors"
+              >
+                Templates
+              </Link>
+              <Link
+                href="/projects/new"
+                className="ml-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-gradient-brand shadow-brand-soft hover:shadow-brand transition-shadow"
+              >
+                New Reel
+              </Link>
+            </nav>
+          </div>
+        </header>
+        <main>{children}</main>
+        <footer className="mx-auto max-w-7xl px-6 py-10 text-xs text-ink-subtle border-t border-white/[0.06] mt-16">
+          &copy; {new Date().getFullYear()} Realstate. All rights reserved.
+        </footer>
       </body>
     </html>
   );

@@ -35,16 +35,16 @@ export function StoryboardTimeline({ storyboard, uploads }: Props) {
       </div>
 
       {storyboard.unfilled_slot_ids.length > 0 && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+        <div className="rounded-2xl border border-amber-800/40 bg-amber-900/20 p-4 flex gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
           <div className="text-sm">
-            <p className="font-medium text-amber-900">
+            <p className="font-medium text-amber-300">
               {storyboard.unfilled_slot_ids.length} slot
               {storyboard.unfilled_slot_ids.length === 1 ? "" : "s"} couldn't be filled
             </p>
-            <p className="text-amber-800/80 mt-0.5">
+            <p className="text-amber-400/70 mt-0.5">
               Either upload more matching photos or enable a generative provider
-              (set <code className="bg-amber-100 px-1 rounded">GEMINI_API_KEY</code> for Nano Banana Pro).
+              (set <code className="bg-amber-900/30 px-1 rounded">GEMINI_API_KEY</code> for Nano Banana Pro).
             </p>
           </div>
         </div>
@@ -67,14 +67,14 @@ export function StoryboardTimeline({ storyboard, uploads }: Props) {
           return (
             <div
               key={shot.slot_id + i}
-              className="flex items-stretch gap-3 rounded-xl border border-border/60 bg-white p-2 hover:border-primary-200 transition-colors"
+              className="flex items-stretch gap-3 rounded-xl border border-white/[0.06] bg-[#14141f] p-2 hover:border-primary-400/30 transition-colors"
             >
               <div className="w-10 text-center font-display font-semibold text-ink-subtle pt-2">
                 {i + 1}
               </div>
               <div
                 className={cn(
-                  "w-24 h-16 rounded-lg overflow-hidden flex items-center justify-center bg-gradient-soft border border-border/40 shrink-0",
+                  "w-24 h-16 rounded-lg overflow-hidden flex items-center justify-center bg-white/[0.04] border border-white/[0.06] shrink-0",
                 )}
               >
                 {imgUrl ? (
@@ -133,8 +133,8 @@ function Stat({
   return (
     <div
       className={cn(
-        "rounded-xl border bg-white p-3",
-        warning ? "border-amber-200 bg-amber-50" : "border-border/60",
+        "rounded-xl border bg-[#14141f] p-3",
+        warning ? "border-amber-800/40 bg-amber-900/20" : "border-white/[0.08]",
       )}
     >
       <div className="text-xs text-ink-muted flex items-center gap-1">
@@ -143,9 +143,9 @@ function Stat({
       </div>
       <div
         className={cn(
-          "font-display text-xl font-semibold mt-0.5",
+          "font-display text-xl font-semibold mt-0.5 text-white",
           accent && "gradient-text",
-          warning && "text-amber-700",
+          warning && "text-amber-400",
         )}
       >
         {value}

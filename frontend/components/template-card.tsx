@@ -32,13 +32,13 @@ export function TemplateCard({ template, selected, onSelect }: Props) {
         <div
           className={cn(
             "h-32 flex items-center justify-center relative overflow-hidden",
-            selected ? "bg-gradient-brand" : "bg-gradient-soft",
+            selected ? "bg-gradient-brand" : "bg-white/[0.03]",
           )}
         >
           <Film
             className={cn(
               "w-12 h-12 transition-transform group-hover:scale-110",
-              selected ? "text-white" : "text-primary/50",
+              selected ? "text-white" : "text-primary-400/50",
             )}
           />
           <div className="absolute top-2 right-2 flex gap-1">

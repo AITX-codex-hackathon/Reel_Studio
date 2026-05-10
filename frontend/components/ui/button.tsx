@@ -11,13 +11,13 @@ const buttonVariants = cva(
         default:
           "bg-gradient-brand text-white shadow-brand-soft hover:shadow-brand active:scale-[0.98]",
         secondary:
-          "bg-primary-50 text-primary-700 hover:bg-primary-100 border border-primary-100",
+          "bg-white/[0.06] text-white hover:bg-white/[0.1] border border-white/10",
         outline:
-          "border border-border-strong bg-white hover:bg-primary-50 text-ink",
-        ghost: "hover:bg-primary-50 text-ink",
+          "border border-white/10 bg-transparent hover:bg-white/[0.06] text-white",
+        ghost: "hover:bg-white/[0.06] text-white",
         destructive:
-          "bg-red-50 text-red-600 hover:bg-red-100 border border-red-100",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-red-900/30 text-red-400 hover:bg-red-900/50 border border-red-800/30",
+        link: "text-primary-700 underline-offset-4 hover:underline",
       },
       size: {
         sm: "h-9 px-3",

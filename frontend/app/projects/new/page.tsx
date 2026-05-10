@@ -43,7 +43,7 @@ export default function NewProjectPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto px-6 py-10">
       <div className="mb-8">
         <div className="inline-flex items-center gap-2 text-xs text-primary font-medium mb-2">
           <Sparkles className="w-3.5 h-3.5" /> Step 1 of 4
@@ -133,7 +133,7 @@ export default function NewProjectPage() {
               />
             </Field>
           </CardContent>
-          <div className="flex justify-end gap-3 p-6 border-t border-border/40 bg-surface-alt/40">
+          <div className="flex justify-end gap-3 p-6 border-t border-white/[0.06]">
             <Button
               type="button"
               variant="ghost"
