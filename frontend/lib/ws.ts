@@ -15,7 +15,7 @@ export function connectProgressWS(
   projectId: string,
   onMessage: (m: ProgressMessage) => void,
 ): () => void {
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
   const url = apiBase.replace(/^http/, "ws") + `/ws/projects/${projectId}/progress`;
   let ws: WebSocket | null = null;
   let closed = false;

@@ -1,6 +1,7 @@
-// API client. All requests go through Next's `/api/*` rewrite to the FastAPI backend.
+// API client. Call FastAPI directly; long-running generation requests can outlive
+// the Next dev rewrite proxy and surface as false 500s while the backend keeps running.
 
-const BASE = "/api";
+const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
