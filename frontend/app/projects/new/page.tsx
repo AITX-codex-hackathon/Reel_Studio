@@ -48,7 +48,7 @@ export default function NewProjectPage() {
         <div className="inline-flex items-center gap-2 text-xs text-primary font-medium mb-2">
           <Sparkles className="w-3.5 h-3.5" /> Step 1 of 4
         </div>
-        <h1 className="font-display text-3xl font-bold">Create a new reel</h1>
+        <h1 className="font-display text-3xl font-bold">Create a new project</h1>
         <p className="text-ink-muted mt-2">
           Property details so the AI can write smart text overlays.
         </p>

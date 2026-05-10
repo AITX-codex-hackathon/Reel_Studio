@@ -103,7 +103,7 @@ export default function DashboardPage() {
             <div className="flex flex-wrap gap-3 pt-1">
               <NewReelButton size="lg">
                 <Plus className="w-4 h-4" />
-                Start a new reel
+                Start a new project
               </NewReelButton>
               <Button asChild variant="outline" size="lg">
                 <Link href="/templates">
@@ -144,10 +144,10 @@ export default function DashboardPage() {
                 </div>
                 <h3 className="font-display text-lg font-semibold text-white">No projects yet</h3>
                 <p className="text-sm text-ink-muted mt-1 mb-6">
-                  Create your first reel — the whole flow takes about 2 minutes.
+                  Create your first project — the whole flow takes about 2 minutes.
                 </p>
                 <NewReelButton>
-                  <Wand2 className="w-4 h-4" /> Create your first reel
+                  <Wand2 className="w-4 h-4" /> Create your first project
                 </NewReelButton>
               </CardContent>
             </Card>

@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/AuthContext";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Eye, EyeOff } from "lucide-react";
 import { auth, googleProvider, isFirebaseConfigured } from "@/lib/firebase";
 import { 
   signInWithPopup, 
@@ -24,6 +24,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -163,14 +164,28 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
               />
             </div>
             <div className="space-y-2">
-              <Input 
-                type="password" 
-                placeholder="Password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="h-11 bg-surface-alt border-border focus-visible:ring-primary-400"
-              />
+              <div className="relative">
+                <Input 
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Password" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="h-11 bg-surface-alt border-border focus-visible:ring-primary-400 pr-11"
+                />
+                {password.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink transition-colors"
+                    tabIndex={-1}
+                  >
+                    {showPassword 
+                      ? <EyeOff className="w-4 h-4" />
+                      : <Eye className="w-4 h-4" />}
+                  </button>
+                )}
+              </div>
             </div>
             <Button type="submit" disabled={isLoading} className="w-full bg-gradient-brand hover:shadow-brand-soft h-11 text-base font-medium">
               {isSignUp ? "Sign up" : "Log in"}

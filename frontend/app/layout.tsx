@@ -103,7 +103,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 >
                   Templates
                 </Link>
-                <NewReelButton isHeader>New Reel</NewReelButton>
+                <NewReelButton isHeader>New Project</NewReelButton>
                 <UserNav />
               </nav>
             </div>
