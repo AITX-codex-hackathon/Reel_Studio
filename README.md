@@ -25,11 +25,11 @@ ReelStudio eliminates every one of these steps. An agent uploads their existing 
 **Is success measurable?**
 | Metric | Target | Achieved |
 |---|---|---|
-| Time from upload to downloadable reel | < 3 minutes | ✅ ~2 min (draft), ~5 min (final) |
-| Photos required | As few as 3 | ✅ Works with 3–150 photos |
-| Output format | 9:16, 1080p, no black bars | ✅ Force-crop-to-fill pipeline |
-| AI hallucination guardrails | No invented rooms or text | ✅ Strict grounding instructions to Kling |
-| Cost per reel | < $1 in API credits | ✅ ~$0.40–$0.80 per FAL render |
+| Time from upload to downloadable reel | < 3 minutes | ~2 min (draft), ~5 min (final) |
+| Photos required | As few as 3 | Works with 3–150 photos |
+| Output format | 9:16, 1080p, no black bars | Force-crop-to-fill pipeline |
+| AI hallucination guardrails | No invented rooms or text | Strict grounding instructions to Kling |
+| Cost per reel | < $1 in API credits | ~$0.40–$0.80 per FAL render |
 
 ---
 
