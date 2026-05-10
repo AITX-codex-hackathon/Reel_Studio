@@ -207,8 +207,8 @@ class PacingScheduler:
             if y is None or len(y) == 0:
                 return {}
             hop_length = 512
-            rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=hop_length)[0]
-            times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop_length)
+            onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
+            times = librosa.frames_to_time(np.arange(len(onset_env)), sr=sr, hop_length=hop_length)
             out: dict[float, float] = {}
             lookahead = _env_float("SNAPPY_CUT_LOOKAHEAD_SEC", 0.22, low=0.05, high=0.5)
             for beat in beat_grid:
@@ -219,9 +219,9 @@ class PacingScheduler:
                 hi = min(duration, beat + lookahead)
                 mask = (times >= lo) & (times <= hi)
                 if bool(mask.any()):
-                    energy = float(np.max(rms[mask]))
+                    energy = float(np.max(onset_env[mask]))
                 else:
-                    energy = float(np.interp(beat, times, rms))
+                    energy = float(np.interp(beat, times, onset_env))
                 out[round(beat, 6)] = energy
             return out
         except Exception as error:
