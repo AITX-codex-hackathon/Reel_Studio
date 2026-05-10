@@ -276,9 +276,7 @@ class PacingScheduler:
                 if float(onset_env[frame]) >= median_strength:
                     strong_times.append(max(0.0, time - lead_sec))
 
-            led_beats = [max(0.0, time - lead_sec) for time in base]
-
-            merged = _merge_cut_times([*base, *led_beats, *strong_times], target_duration=duration)
+            merged = _merge_cut_times([*base, *strong_times], target_duration=duration)
             log.info("Snappy cut grid: %d stored beats + %d onset peaks -> %d cut candidates", len(base), len(strong_times), len(merged))
             return merged
         except Exception as error:

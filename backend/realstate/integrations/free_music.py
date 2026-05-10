@@ -7,6 +7,7 @@ stable track id.
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -272,10 +273,18 @@ def detect_beats(audio_path: Path, hop_length: int = 512) -> tuple[float, list[i
         raise FreeMusicError(f"Beat detection failed: {error}") from error
 
     tempo_value = float(np.asarray(tempo).reshape(-1)[0])
-    beat_ms = sorted({int(round(time * 1000)) for time in beat_times if time > 0})
+    shift_ms = _beat_pre_shift_ms()
+    beat_ms = sorted({max(0, int(round(time * 1000)) - shift_ms) for time in beat_times if time > 0})
     if not beat_ms:
         raise FreeMusicError("No beats detected.")
     return tempo_value, beat_ms
+
+
+def _beat_pre_shift_ms() -> int:
+    try:
+        return max(0, min(200, int(os.getenv("BEAT_PRE_SHIFT_MS", "60"))))
+    except ValueError:
+        return 60
 
 
 def write_timestamps(beat_ms: list[int], output_path: Path) -> None:
