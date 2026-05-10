@@ -14,7 +14,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Textarea } from "@/components/ui/input";
+import { Label, Textarea } from "@/components/ui/input";
 import type { ResolvedShot, Storyboard, Upload } from "@/lib/api";
 import { api } from "@/lib/api";
 import { cn, formatSeconds } from "@/lib/utils";
@@ -42,7 +42,6 @@ const MOTIONS = [
   "generative",
 ];
 
-const TRANSITIONS = ["cut", "dissolve", "slide_left", "slide_right", "whip_pan", "fade"];
 
 export function StoryboardTimeline({
   storyboard,
@@ -330,26 +329,6 @@ function ShotEditor({
           >
             {MOTIONS.map((motion) => <option key={motion} value={motion}>{motion}</option>)}
           </select>
-        </Field>
-        <Field label="Transition">
-          <select
-            value={shot.transition_in}
-            onChange={(event) => onChange({ transition_in: event.target.value })}
-            className="h-9 w-full rounded-xl border border-border bg-white px-3 text-xs text-ink"
-          >
-            {TRANSITIONS.map((transition) => <option key={transition} value={transition}>{transition}</option>)}
-          </select>
-        </Field>
-        <Field label="Strength">
-          <Input
-            type="number"
-            min={0}
-            max={1}
-            step={0.05}
-            value={shot.motion_strength}
-            onChange={(event) => onChange({ motion_strength: Number(event.target.value) })}
-            className="h-9 text-xs"
-          />
         </Field>
       </div>
 
