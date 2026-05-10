@@ -42,7 +42,7 @@ export default function TemplatesPage() {
   };
 
   return (
-    <div className="space-y-10">
+    <div className="mx-auto max-w-7xl px-6 py-10 space-y-10">
       <div>
         <h1 className="font-display text-3xl font-bold">Templates</h1>
         <p className="text-ink-muted mt-1">
@@ -157,7 +157,7 @@ export default function TemplatesPage() {
                 {selected.shot_slots.map((slot, i) => (
                   <div
                     key={slot.slot_id}
-                    className="flex gap-3 p-3 rounded-xl border border-border/60 bg-white"
+                    className="flex gap-3 p-3 rounded-xl border border-white/[0.06] bg-[#14141f]"
                   >
                     <div className="w-8 text-center font-display text-ink-subtle">{i + 1}</div>
                     <div className="flex-1 min-w-0">

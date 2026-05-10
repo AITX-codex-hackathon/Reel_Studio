@@ -59,23 +59,23 @@ export function UploadDropzone({ projectId, uploads, onChange }: Props) {
         className={cn(
           "relative rounded-2xl border-2 border-dashed p-10 text-center transition-all cursor-pointer",
           isDragActive
-            ? "border-accent bg-accent-50"
-            : "border-border-strong bg-gradient-soft hover:border-primary-300 hover:bg-primary-50/50",
+            ? "border-accent bg-accent/[0.08]"
+            : "border-white/10 bg-white/[0.02] hover:border-primary-400/30 hover:bg-white/[0.04]",
         )}
       >
         <input {...getInputProps()} />
-        <div className="w-14 h-14 mx-auto rounded-2xl bg-white flex items-center justify-center shadow-card mb-4">
-          <UploadIcon className="w-6 h-6 text-primary" />
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-white/[0.06] flex items-center justify-center mb-4">
+          <UploadIcon className="w-6 h-6 text-primary-400" />
         </div>
         <p className="font-display text-lg font-semibold">
-          {isDragActive ? "Drop them here" : "Drop 50–150 property photos"}
+          {isDragActive ? "Drop them here" : "Drop your property photos"}
         </p>
         <p className="text-sm text-ink-muted mt-1">
           JPG, PNG, WebP, HEIC. We'll analyze and storyboard them automatically.
         </p>
         {busy && (
           <div className="mt-5 max-w-sm mx-auto">
-            <div className="h-1.5 rounded-full bg-white overflow-hidden">
+            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
               <div
                 className="h-full bg-gradient-brand transition-all"
                 style={{ width: `${progress * 100}%` }}
@@ -101,7 +101,7 @@ export function UploadDropzone({ projectId, uploads, onChange }: Props) {
             {uploads.map((u) => (
               <div
                 key={u.id}
-                className="group relative aspect-square rounded-lg overflow-hidden bg-primary-50 border border-border/40"
+                className="group relative aspect-square rounded-lg overflow-hidden bg-white/[0.04] border border-white/[0.06]"
               >
                 <img
                   src={api.uploadFileUrl(u.id)}

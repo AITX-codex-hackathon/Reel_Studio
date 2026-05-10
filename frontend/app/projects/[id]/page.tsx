@@ -115,7 +115,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const stepIdx = (["upload", "template", "storyboard", "render"] as Step[]).indexOf(step);
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-7xl px-6 py-10 space-y-8">
       {/* Header */}
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
@@ -146,7 +146,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           <CardHeader>
             <CardTitle>Upload property photos</CardTitle>
             <CardDescription>
-              Drop 50–150 images — exterior, interior, details. Higher quality photos
+              Drop your property images — exterior, interior, details. Higher quality photos
               produce better reels.
             </CardDescription>
           </CardHeader>
@@ -157,7 +157,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               onChange={setUploads}
             />
           </CardContent>
-          <div className="flex justify-end p-6 border-t border-border/40">
+          <div className="flex justify-end p-6 border-t border-white/[0.06]">
             <Button
               onClick={() => setStep("template")}
               disabled={uploads.length === 0}
@@ -192,7 +192,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               </div>
             )}
           </CardContent>
-          <div className="flex justify-between gap-3 p-6 border-t border-border/40">
+          <div className="flex justify-between gap-3 p-6 border-t border-white/[0.06]">
             <Button variant="ghost" onClick={() => setStep("upload")}>
               ← Back
             </Button>
@@ -237,7 +237,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           <CardContent>
             <StoryboardTimeline storyboard={storyboard} uploads={uploads} />
           </CardContent>
-          <div className="flex justify-between gap-3 p-6 border-t border-border/40">
+          <div className="flex justify-between gap-3 p-6 border-t border-white/[0.06]">
             <Button variant="ghost" onClick={() => setStep("template")}>
               ← Change template
             </Button>
@@ -329,8 +329,8 @@ function Stepper({
               isCurrent
                 ? "border-primary bg-gradient-soft shadow-brand-soft"
                 : isUnlocked
-                  ? "border-border/60 bg-white hover:border-primary-200"
-                  : "border-border/40 bg-white/40 opacity-50 cursor-not-allowed",
+                  ? "border-white/[0.08] bg-[#14141f] hover:border-primary-400/30"
+                  : "border-white/[0.04] bg-[#14141f]/40 opacity-50 cursor-not-allowed",
             )}
           >
             <div className="flex items-center gap-2">
@@ -338,10 +338,10 @@ function Stepper({
                 className={cn(
                   "w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold",
                   it.done
-                    ? "bg-emerald-100 text-emerald-700"
+                    ? "bg-emerald-900/40 text-emerald-400"
                     : isCurrent
                       ? "bg-gradient-brand text-white"
-                      : "bg-primary-100 text-primary-700",
+                      : "bg-primary-200/20 text-primary-700",
                 )}
               >
                 {it.done ? <Check className="w-3.5 h-3.5" /> : i + 1}

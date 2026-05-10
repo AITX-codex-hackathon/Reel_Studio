@@ -2,11 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: 0 0% 100%;
-  --foreground: 270 60% 12%;
-}
-
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
@@ -14,24 +9,19 @@
     text-rendering: optimizeLegibility;
   }
   body {
-    @apply bg-surface-alt text-ink antialiased;
-    background-image:
-      radial-gradient(circle at 0% 0%, rgba(255, 20, 147, 0.04) 0, transparent 40%),
-      radial-gradient(circle at 100% 0%, rgba(123, 44, 191, 0.05) 0, transparent 40%),
-      linear-gradient(180deg, #FFFFFF 0%, #FBF7FE 100%);
-    background-attachment: fixed;
+    @apply bg-[#0a0a0f] text-white antialiased;
   }
   ::selection {
-    @apply bg-accent/20 text-ink;
+    @apply bg-accent/30 text-white;
   }
 }
 
 @layer components {
   .glass {
-    @apply bg-white/70 backdrop-blur-xl border border-white/60;
+    @apply bg-[#0a0a0f]/40 backdrop-blur-2xl border-b border-white/[0.06];
   }
   .card-elevated {
-    @apply bg-white rounded-2xl shadow-card border border-border/60;
+    @apply bg-[#14141f] rounded-2xl shadow-card border border-white/[0.06];
   }
   .gradient-text {
     @apply bg-gradient-brand bg-clip-text text-transparent;
@@ -39,31 +29,26 @@
   .skeleton {
     background: linear-gradient(
       90deg,
-      rgba(237, 224, 247, 0.3) 0%,
-      rgba(237, 224, 247, 0.7) 50%,
-      rgba(237, 224, 247, 0.3) 100%
+      rgba(255, 255, 255, 0.03) 0%,
+      rgba(255, 255, 255, 0.06) 50%,
+      rgba(255, 255, 255, 0.03) 100%
     );
     background-size: 200% 100%;
     @apply animate-shimmer rounded-lg;
   }
 }
 
-/* Scrollbars — themed */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(123, 44, 191, 0.18);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(123, 44, 191, 0.28);
-  background-clip: padding-box;
-  border: 2px solid transparent;
+  background: rgba(255, 255, 255, 0.18);
 }
