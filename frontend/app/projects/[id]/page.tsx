@@ -82,6 +82,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setStoryboard(sb);
       setStep("storyboard");
     } catch (e) {
+      const savedStoryboard = await api.getStoryboard(projectId).catch(() => null);
+      if (savedStoryboard) {
+        setStoryboard(savedStoryboard);
+        setStep("storyboard");
+        return;
+      }
       alert(`Failed to generate storyboard: ${e instanceof Error ? e.message : e}`);
     } finally {
       setGeneratingStoryboard(false);
