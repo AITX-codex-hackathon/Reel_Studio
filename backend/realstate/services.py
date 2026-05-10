@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
 
 from .agents.image_analyzer import ImageAnalyzer, ImageAnalysisResult
+from .agents.photo_selector import PhotoSelector
+from .agents.prompt_standard import FAL_SHOT_SOP
 from .agents.shot_matcher import AnalyzedUpload, ShotMatcher
 from .data.style_recipes import get_cinematic_for_room
 from .models.project import Project
-from .models.storyboard import ResolvedShot, Storyboard, StoryboardMusic
+from .models.storyboard import ResolvedShot, Storyboard, StoryboardCreativeBrief, StoryboardMusic
 from .models.template import Template
 from .schedulers.pacing import PacingScheduler
 from .storage.filesystem import ProjectFiles
@@ -26,11 +28,13 @@ class StoryboardBuilder:
     def __init__(
         self,
         analyzer: Optional[ImageAnalyzer] = None,
+        selector: Optional[PhotoSelector] = None,
         matcher: Optional[ShotMatcher] = None,
         scheduler: Optional[PacingScheduler] = None,
         project_files: Optional[ProjectFiles] = None,
     ):
         self.analyzer = analyzer or ImageAnalyzer()
+        self.selector = selector or PhotoSelector()
         self.matcher = matcher or ShotMatcher()
         self.scheduler = scheduler or PacingScheduler()
         self.project_files = project_files or ProjectFiles()
@@ -55,23 +59,70 @@ class StoryboardBuilder:
         )
         analyzed = await self._analyze_uploads(uploads, telemetry=telemetry)
 
-        # 2. Match images to slots. Storyboard generation only plans; render generates FAL clips later.
+        music_context = _music_context(music, beat_timestamps_ms)
+        await _emit(
+            telemetry,
+            stage="storyboard",
+            message=f"Curating {len(analyzed)} analyzed photo{'s' if len(analyzed) != 1 else ''} against the scene rubric.",
+            progress=0.56,
+        )
+        selection = await self.selector.select(
+            project=project,
+            template=template,
+            uploads=analyzed,
+            music_context=music_context,
+        )
+        selected_ids = [upload_id for upload_id in selection.selected_upload_ids if upload_id]
+        analyzed_by_id = {upload.upload_id: upload for upload in analyzed}
+        curated_analyzed = [analyzed_by_id[upload_id] for upload_id in selected_ids if upload_id in analyzed_by_id]
+        if not curated_analyzed:
+            curated_analyzed = analyzed
+            selected_ids = [upload.upload_id for upload in analyzed]
+        curation_context = " ".join(
+            part
+            for part in [
+                music_context,
+                f"Photo curation concept hint: {selection.concept_hint}." if selection.concept_hint else "",
+                f"Photo curation notes: {selection.notes}." if selection.notes else "",
+            ]
+            if part
+        )
+        await _emit(
+            telemetry,
+            stage="storyboard",
+            message=(
+                f"Selected {len(curated_analyzed)} of {len(analyzed)} photo"
+                f"{'s' if len(analyzed) != 1 else ''} for the strongest story arc."
+            ),
+            progress=0.62,
+            detail={
+                "selected_upload_ids": selected_ids,
+                "rejected_upload_ids": selection.rejected_upload_ids,
+            },
+        )
+
+        # 2. Match curated images to slots. Storyboard generation only plans; render generates FAL clips later.
         await _emit(
             telemetry,
             stage="storyboard",
             message="Planning story order, shot assignments, camera motion, and beat-aware pacing.",
-            progress=0.58,
+            progress=0.68,
         )
-        music_context = _music_context(music, beat_timestamps_ms)
-        match = await self.matcher.match(template, analyzed, music_context=music_context)
+        match = await self.matcher.match(template, curated_analyzed, music_context=curation_context)
+        creative_brief = _creative_brief_model(
+            match.creative_brief,
+            template=template,
+            upload_count=len(curated_analyzed),
+            music_context=curation_context,
+        )
 
         # 3. Build shots with style recipes. With any real uploads present, reuse real photos
         # instead of spawning generated filler rooms.
-        upload_by_id = {u.upload_id: u for u in analyzed}
+        upload_by_id = {u.upload_id: u for u in curated_analyzed}
         slot_by_id = template.slot_by_id
         ordered_slots = [slot_by_id[slot_id] for slot_id in match.slot_order if slot_id in slot_by_id]
         ordered_slots.extend(slot for slot in template.shot_slots if slot.slot_id not in {s.slot_id for s in ordered_slots})
-        ordered_slots = _adapt_slots_to_upload_count(ordered_slots, len(analyzed))
+        ordered_slots = _adapt_slots_to_upload_count(ordered_slots, len(curated_analyzed))
         await _emit(
             telemetry,
             stage="storyboard",
@@ -112,20 +163,50 @@ class StoryboardBuilder:
             timing = timing_by_slot.get(slot.slot_id)
             duration_sec = _clip_duration(timing.duration_sec if timing else slot.duration_sec)
             override = match.style_overrides.get(slot.slot_id, {})
-            recipe = get_cinematic_for_room(room_type, seed=index)
+            scene_purpose = str(override.get("scene_purpose") or "").strip()
+            beat_plan = str(override.get("beat_plan") or "").strip()
+            masking_plan = str(override.get("masking_plan") or "").strip()
+            transition_plan = str(override.get("transition_plan") or "").strip()
+            continuity_notes = str(override.get("continuity_notes") or "").strip()
             style_notes = str(override.get("style_notes") or "").strip()
+            rubric_plan = _clean_rubric_plan(override.get("rubric_plan") or override.get("rubric"))
+            recipe_intent = " ".join(
+                part
+                for part in [
+                    slot.description,
+                    room_type or "",
+                    scene_purpose,
+                    style_notes,
+                    transition_plan,
+                    _rubric_text(rubric_plan),
+                    creative_brief.visual_theme,
+                ]
+                if part
+            )
+            recipe = get_cinematic_for_room(room_type, seed=index, intent=recipe_intent)
             if upload_analysis and slot.room_type and upload_analysis.room_type != slot.room_type:
                 style_notes = (
                     f"{style_notes} The source upload is analyzed as {upload_analysis.room_type}, "
                     f"not {slot.room_type}; preserve the real source image and treat this as a grounded "
                     "bridge shot instead of inventing a missing room."
                 ).strip()
+                continuity_notes = (
+                    f"{continuity_notes} This is a grounded repurposed scene: do not change the room identity "
+                    f"from {upload_analysis.room_type} into {slot.room_type}."
+                ).strip()
             style_recipe_prompt = _style_recipe_prompt(
                 project=project,
                 slot_description=slot.description,
                 room_type=room_type,
                 recipe=recipe,
+                creative_brief=creative_brief,
+                scene_purpose=scene_purpose,
                 style_notes=style_notes,
+                beat_plan=beat_plan,
+                masking_plan=masking_plan,
+                transition_plan=transition_plan,
+                continuity_notes=continuity_notes,
+                rubric_plan=rubric_plan,
                 music_context=music_context,
                 has_source_image=bool(image_path),
             )
@@ -150,6 +231,12 @@ class StoryboardBuilder:
                     room_type=room_type,
                     style_recipe_id=recipe.style_id if recipe else None,
                     style_notes=style_notes or None,
+                    scene_purpose=scene_purpose or None,
+                    beat_plan=beat_plan or None,
+                    masking_plan=masking_plan or None,
+                    transition_plan=transition_plan or None,
+                    continuity_notes=continuity_notes or None,
+                    rubric_plan=rubric_plan or None,
                     style_recipe_prompt=style_recipe_prompt,
                 )
             )
@@ -172,12 +259,16 @@ class StoryboardBuilder:
             audio_cues=template.audio_cues,
             text_overlays=template.text_overlays,
             music=music,
+            creative_brief=creative_brief,
             total_duration_sec=total,
             aspect_ratio=template.aspect_ratio,
             beat_timestamps=[ms / 1000 for ms in (beat_timestamps_ms or [])],
             generated_slot_ids=[s.slot_id for s in shots if s.is_generated],
             unfilled_slot_ids=list(match.unfilled),
-            notes=match.notes,
+            selected_upload_ids=selected_ids,
+            rejected_upload_ids=selection.rejected_upload_ids,
+            photo_selection_notes=selection.notes,
+            notes=" ".join(part for part in [match.notes, selection.notes] if part).strip(),
         )
 
     async def _analyze_uploads(
@@ -220,6 +311,44 @@ class StoryboardBuilder:
         return list(await asyncio.gather(*(analyze_one(upload) for upload in uploads)))
 
 
+def _creative_brief_model(
+    brief: dict[str, Any],
+    *,
+    template: Template,
+    upload_count: int,
+    music_context: str,
+) -> StoryboardCreativeBrief:
+    continuity = brief.get("continuity_rules") if isinstance(brief, dict) else []
+    if not isinstance(continuity, list):
+        continuity = [continuity]
+    fallback_music = (
+        music_context
+        or "Use calm commercial pacing; let scene changes breathe and avoid aggressive music-video edits."
+    )
+    sparse_rule = (
+        "Sparse upload mode: build the film from real available photos and reuse them with distinct scene intent."
+        if upload_count and upload_count < 5
+        else "Use actual uploads as the source of truth for room order and visual continuity."
+    )
+    return StoryboardCreativeBrief(
+        concept_title=_clean_prompt_text(brief.get("concept_title") if isinstance(brief, dict) else "", 180)
+        or f"{template.name}: cinematic property story",
+        logline=_clean_prompt_text(brief.get("logline") if isinstance(brief, dict) else "", 500)
+        or "A calm commercial reel that turns the available listing photos into one coherent property story.",
+        visual_theme=_clean_prompt_text(brief.get("visual_theme") if isinstance(brief, dict) else "", 900)
+        or "Smooth architectural motion, refined warm light, stable geometry, soft parallax, and clean editorial transitions.",
+        emotional_arc=_clean_prompt_text(brief.get("emotional_arc") if isinstance(brief, dict) else "", 900)
+        or "Orientation, invitation, material proof, emotional breath, and a polished closing memory.",
+        music_strategy=_clean_prompt_text(brief.get("music_strategy") if isinstance(brief, dict) else "", 900)
+        or fallback_music,
+        continuity_rules=[
+            *[_clean_prompt_text(item, 300) for item in continuity if _clean_prompt_text(item, 300)],
+            "Preserve source-image architecture, layout, materials, and room identity.",
+            sparse_rule,
+        ][:8],
+    )
+
+
 def _adapt_slots_to_upload_count(slots: list, upload_count: int) -> list:
     if upload_count <= 0 or upload_count >= 5 or len(slots) <= 3:
         return slots
@@ -240,6 +369,44 @@ def _adapt_slots_to_upload_count(slots: list, upload_count: int) -> list:
 
 def _clip_duration(duration_sec: float) -> float:
     return max(2.5, min(float(duration_sec), _CLIP_DURATION_SEC))
+
+
+def _clean_prompt_text(value: Any, limit: int) -> str:
+    return " ".join(str(value or "").split())[:limit].strip()
+
+
+def _clean_rubric_plan(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    cleaned: dict[str, Any] = {}
+    for key, item in value.items():
+        clean_key = _clean_prompt_text(key, 80)
+        if not clean_key:
+            continue
+        if isinstance(item, dict):
+            nested = {
+                _clean_prompt_text(nested_key, 80): _clean_prompt_text(nested_value, 700)
+                for nested_key, nested_value in item.items()
+                if _clean_prompt_text(nested_key, 80)
+            }
+            if nested:
+                cleaned[clean_key] = nested
+        else:
+            cleaned[clean_key] = _clean_prompt_text(item, 2200 if clean_key == "FAL_GENERATION_PROMPT" else 900)
+    return cleaned
+
+
+def _rubric_text(value: dict[str, Any]) -> str:
+    if not value:
+        return ""
+    parts: list[str] = []
+    for key, item in value.items():
+        if isinstance(item, dict):
+            nested = "; ".join(f"{nested_key}: {nested_value}" for nested_key, nested_value in item.items())
+            parts.append(f"{key}: {nested}")
+        else:
+            parts.append(f"{key}: {item}")
+    return " ".join(parts)
 
 
 async def _emit(
@@ -277,7 +444,14 @@ def _style_recipe_prompt(
     slot_description: str,
     room_type: Optional[str],
     recipe,
+    creative_brief: StoryboardCreativeBrief,
+    scene_purpose: str,
     style_notes: str,
+    beat_plan: str,
+    masking_plan: str,
+    transition_plan: str,
+    continuity_notes: str,
+    rubric_plan: dict[str, Any],
     music_context: str,
     has_source_image: bool,
 ) -> str:
@@ -303,16 +477,31 @@ def _style_recipe_prompt(
         "No source photo is available for this slot, so generate only a restrained real-estate bridge "
         "shot that matches the property context. Avoid impossible architecture and avoid adding text."
     )
+    continuity_rules = " ".join(
+        f"Continuity rule: {rule}." for rule in creative_brief.continuity_rules if rule
+    )
 
     return " ".join(
         part
         for part in [
+            FAL_SHOT_SOP,
             "Premium cinematic real-estate reel shot.",
+            f"Binding concept: {creative_brief.concept_title}. {creative_brief.logline}",
+            f"Whole-reel visual theme: {creative_brief.visual_theme}",
+            f"Whole-reel emotional arc: {creative_brief.emotional_arc}",
             f"Storyboard need: {slot_description}.",
+            f"Scene purpose: {scene_purpose}." if scene_purpose else "",
             f"Grounded room/visual anchor: {room_type or 'property detail'}.",
             f"Property context: {property_context}." if property_context else "",
             *recipe_bits,
             f"Editor-agent direction: {style_notes}" if style_notes else "",
+            f"Beat plan: {beat_plan}" if beat_plan else "",
+            f"Masking and holdout plan: {masking_plan}" if masking_plan else "",
+            f"Transition plan: {transition_plan}" if transition_plan else "",
+            f"Continuity notes: {continuity_notes}" if continuity_notes else "",
+            f"Rubric scene plan: {_rubric_text(rubric_plan)}" if rubric_plan else "",
+            continuity_rules,
+            f"Music strategy: {creative_brief.music_strategy}" if creative_brief.music_strategy else "",
             f"Audio/editing context: {music_context}" if music_context else "",
             grounding,
             "Make the motion smooth, expensive, calm, dramatic, and commercial. Favor controlled dolly, "
@@ -359,6 +548,7 @@ def _fallback_generation_prompt(project: Project, slot_description: str, style_n
     context_line = f"Property context: {property_context}." if property_context else ""
     style_line = f"Editor camera/style notes: {style_notes}." if style_notes else ""
     return (
+        f"{FAL_SHOT_SOP} "
         "Generate a realistic high-end real-estate listing image for a vertical cinematic reel. "
         "Use the uploaded reference photos as visual anchors for architecture, materials, lighting, "
         "and property identity when provided. Do not add text, logos, watermarks, distorted rooms, "

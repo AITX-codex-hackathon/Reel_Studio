@@ -84,13 +84,21 @@ class ReelPipeline:
                     recipe = (
                         get_by_id(shot.style_recipe_id)
                         if shot.style_recipe_id
-                        else get_cinematic_for_room(shot.room_type, seed=i)
+                        else get_cinematic_for_room(
+                            shot.room_type,
+                            seed=i,
+                            intent=" ".join(
+                                part
+                                for part in [
+                                    shot.scene_purpose or "",
+                                    shot.style_notes or "",
+                                    shot.transition_plan or "",
+                                ]
+                                if part
+                            ),
+                        )
                     )
-                    prompt = (
-                        shot.style_recipe_prompt
-                        or (recipe.video_prompt if recipe else None)
-                        or "cinematic smooth camera movement, luxury real estate photography"
-                    )
+                    prompt = _fal_provider_prompt(storyboard=storyboard, shot=shot, recipe=recipe)
 
                     if shot.image_path and Path(shot.image_path).exists():
                         clip = await self.fal.image_to_video(
@@ -270,3 +278,86 @@ class ReelPipeline:
                 log.info("Cue %d (%s) — no audio found, skipping", i, q[:40])
 
         return out
+
+
+def _fal_provider_prompt(storyboard: Storyboard, shot, recipe) -> str:
+    """Compact FAL-facing prompt; the full storyboard keeps richer agent notes."""
+    brief = storyboard.creative_brief
+    recipe_line = ""
+    if recipe:
+        recipe_line = (
+            f"Recipe {recipe.style_id}: {recipe.category}; mood {recipe.mood}; "
+            f"motion {recipe.camera_motion}; dynamics {recipe.environmental_dynamics}; {recipe.video_prompt}"
+        )
+    parts = [
+        "Premium real-estate image-to-video. Preserve the source image as visual truth.",
+        (
+            f"Binding concept: {brief.concept_title}. {brief.logline}"
+            if brief and (brief.concept_title or brief.logline)
+            else ""
+        ),
+        f"Scene purpose: {shot.scene_purpose}" if shot.scene_purpose else "",
+        f"Camera: {shot.motion.value if hasattr(shot.motion, 'value') else shot.motion}, strength {shot.motion_strength:.2f}.",
+        recipe_line,
+        f"Direction: {shot.style_notes}" if shot.style_notes else "",
+        f"User prompt/custom direction: {shot.style_recipe_prompt}" if shot.style_recipe_prompt else "",
+        f"Beat plan: {shot.beat_plan}" if shot.beat_plan else "",
+        f"Mask plan: {shot.masking_plan}" if shot.masking_plan else "",
+        f"Transition: {shot.transition_plan}" if shot.transition_plan else "",
+        f"Continuity: {shot.continuity_notes}" if shot.continuity_notes else "",
+        f"Rubric: {_rubric_provider_text(shot.rubric_plan)}" if shot.rubric_plan else "",
+        (
+            f"Music: {brief.music_strategy}"
+            if brief and brief.music_strategy
+            else "Music: calm commercial dramatic pacing; cuts breathe on downbeats."
+        ),
+        (
+            "Hard negatives: no new rooms, no impossible architecture, no warped walls or fixtures, "
+            "no added people, no readable text changes, no logos, no watermarks, no trap/hype/chaotic whip energy."
+        ),
+    ]
+    return _compact_prompt(parts, max_chars=2350)
+
+
+def _rubric_provider_text(rubric_plan) -> str:
+    if not isinstance(rubric_plan, dict):
+        return ""
+    raw_user_edit = rubric_plan.get("RAW_USER_RUBRIC_EDIT")
+    if raw_user_edit:
+        return f"User rubric/custom scene note: {' '.join(str(raw_user_edit).split())[:1200]}"
+    priority = [
+        "NARRATIVE_THESIS",
+        "TEMPORAL_AUDIO_SYNC",
+        "OPTICS_AND_RIGGING",
+        "KINETIC_PATHWAY",
+        "PRESERVATION_AND_MASKING",
+        "SEAMLESS_TRANSITION_ARCHITECTURE",
+        "FAL_GENERATION_PROMPT",
+    ]
+    parts: list[str] = []
+    for key in priority:
+        item = rubric_plan.get(key)
+        if not item:
+            continue
+        if isinstance(item, dict):
+            parts.append(f"{key}: " + "; ".join(f"{nested_key}={nested_value}" for nested_key, nested_value in item.items()))
+        else:
+            parts.append(f"{key}: {item}")
+    return " ".join(parts)
+
+
+def _compact_prompt(parts: list[str], max_chars: int) -> str:
+    out = ""
+    for part in parts:
+        text = " ".join(str(part or "").split())
+        if not text:
+            continue
+        addition = f"{text} "
+        if len(out) + len(addition) <= max_chars:
+            out += addition
+            continue
+        remaining = max_chars - len(out) - 1
+        if remaining > 80:
+            out += text[:remaining].rstrip() + " "
+        break
+    return out.strip()

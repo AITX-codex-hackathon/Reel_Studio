@@ -36,8 +36,8 @@ export default function DashboardPage() {
             Turn property photos into <span className="gradient-text">cinematic reels</span> in minutes.
           </h1>
           <p className="mt-4 text-lg text-ink-muted leading-relaxed">
-            Upload 50–150 photos, pick a template, and our AI agents storyboard, fill missing
-            shots with Nano Banana, and render a beat-aware 60-second reel.
+            Upload 50–150 photos, pick a template, and our AI agents storyboard, plan FAL
+            image-to-video shots, and render a beat-aware 60-second reel.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg">

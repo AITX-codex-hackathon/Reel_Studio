@@ -18,6 +18,12 @@ from ..storage.filesystem import ProjectFiles
 router = APIRouter(prefix="/projects/{project_id}/uploads", tags=["uploads"])
 
 _ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
+try:
+    from pillow_heif import register_heif_opener  # type: ignore
+
+    register_heif_opener()
+except Exception:
+    pass
 
 
 @router.post("", response_model=list[Upload])
@@ -34,9 +40,11 @@ async def upload_images(
     out_dir = pf.uploads_dir(project_id)
 
     created: list[Upload] = []
+    rejected: list[str] = []
     for upload in files:
         suffix = Path(upload.filename or "").suffix.lower()
         if suffix not in _ALLOWED_EXTS:
+            rejected.append(f"{upload.filename or 'unnamed file'}: unsupported file type")
             continue
 
         # Compute sha256 + write file
@@ -64,6 +72,7 @@ async def upload_images(
                 w, h_px = im.size
         except Exception:
             out_path.unlink(missing_ok=True)
+            rejected.append(f"{upload.filename or out_path.name}: could not read image")
             continue
 
         row = UploadRow(
@@ -80,6 +89,13 @@ async def upload_images(
         created.append(Upload.model_validate(row))
 
     db.commit()
+    if not created and files:
+        detail = (
+            "No images were uploaded. Use JPG, PNG, WebP, or install HEIC support for iPhone HEIC files."
+            if not rejected
+            else "No images were uploaded. " + "; ".join(rejected[:3])
+        )
+        raise HTTPException(400, detail)
     return created
 
 

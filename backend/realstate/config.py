@@ -32,9 +32,17 @@ class Settings(BaseModel):
     # Audio
     elevenlabs_api_key: str = os.getenv("ELEVENLABS_API_KEY", "")
 
-    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o")
-    openai_vision_model: str = _first_env("VLM_MODEL", "OPENAI_VISION_MODEL", default="gpt-4o")
-    i2v_provider: str = os.getenv("I2V_PROVIDER", "stub")
+    openai_agent_model: str = _first_env("OPENAI_AGENT_MODEL", "OPENAI_MODEL", default="gpt-5.5")
+    openai_model: str = _first_env("OPENAI_MODEL", "OPENAI_AGENT_MODEL", default="gpt-5.5")
+    openai_analyzer_model: str = _first_env(
+        "OPENAI_ANALYZER_MODEL", "VLM_MODEL", "OPENAI_AGENT_MODEL", "OPENAI_VISION_MODEL", default="gpt-5.5"
+    )
+    openai_storyboard_model: str = _first_env(
+        "OPENAI_STORYBOARD_MODEL", "OPENAI_AGENT_MODEL", "OPENAI_MODEL", default="gpt-5.5"
+    )
+    openai_vision_model: str = _first_env("VLM_MODEL", "OPENAI_VISION_MODEL", default="gpt-5.5")
+    openai_model_fallbacks: str = os.getenv("OPENAI_MODEL_FALLBACKS", "gpt-5.2,gpt-5,gpt-4o")
+    i2v_provider: str = os.getenv("I2V_PROVIDER", "fal")
     fal_image_model: str = os.getenv("FAL_IMAGE_MODEL", "fal-ai/flux/dev")
     fal_image_edit_model: str = os.getenv("FAL_IMAGE_EDIT_MODEL", "fal-ai/flux-pro/kontext")
     gemini_image_model: str = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3-pro-image-preview")

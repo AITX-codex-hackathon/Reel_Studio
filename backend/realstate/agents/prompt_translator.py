@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import Optional
 
@@ -21,12 +22,19 @@ import yaml
 from pydantic import ValidationError
 
 from .openai_client import OpenAIClient, OpenAIUnavailable
+from .prompt_standard import CORE_REEL_SOP, TEMPLATE_PROMPT_SOP
 from ..models.template import Template
 
 log = logging.getLogger(__name__)
 
 
-_SYSTEM = """You are a senior video editor who converts natural-language briefs from human editors into structured YAML reel templates for a real estate video pipeline.
+_SYSTEM = (
+    "You are a senior video editor who converts natural-language briefs from human editors into "
+    "structured YAML reel templates for a real estate video pipeline.\n\n"
+    + CORE_REEL_SOP
+    + "\n\n"
+    + TEMPLATE_PROMPT_SOP
+    + """
 
 You output ONLY a single JSON object that matches this schema (no prose, no fences):
 
@@ -91,7 +99,10 @@ Rules:
 - If editor mentions "music starts at 4s", set the music audio_cue start_time_sec to 4.0.
 - Default volume_db: -3 for music, 0 for voiceover. Default fades: 1s in, 2s out.
 - Use sensible defaults for anything not specified.
-- text_overlay_id on a shot must reference an overlay defined in text_overlays."""
+- text_overlay_id on a shot must reference an overlay defined in text_overlays.
+- Avoid aggressive, hype, trap, hip-hop, chaotic whip-heavy, or nightclub pacing.
+- Every slot description must name the shot's narrative purpose, not just the room."""
+)
 
 _USER = """Brief from the editor:
 
@@ -106,6 +117,12 @@ Property name (use as the template name if appropriate): {name}
 class PromptTranslator:
     def __init__(self, llm: Optional[OpenAIClient] = None):
         self.llm = llm or OpenAIClient()
+        self.model = (
+            os.getenv("OPENAI_PROMPT_TRANSLATOR_MODEL")
+            or os.getenv("OPENAI_STORYBOARD_MODEL")
+            or os.getenv("OPENAI_AGENT_MODEL")
+            or os.getenv("OPENAI_MODEL")
+        )
 
     async def translate(self, brief: str, name: Optional[str] = None) -> Template:
         if not self.llm.enabled:
@@ -114,7 +131,8 @@ class PromptTranslator:
         text = await self.llm.message(
             system=_SYSTEM,
             user=_USER.format(brief=brief, name=name or "Custom Template"),
-            max_tokens=3500,
+            max_tokens=5000,
+            model=self.model,
         )
         data = _extract_json(text)
 
@@ -127,7 +145,8 @@ class PromptTranslator:
                 system=_SYSTEM,
                 user=_USER.format(brief=brief, name=name or "Custom Template")
                 + f"\n\nYour previous response failed validation:\n{ve}\n\nFix it and respond with the corrected JSON.",
-                max_tokens=3500,
+                max_tokens=5000,
+                model=self.model,
             )
             data = _extract_json(corrected)
             return Template(**data)

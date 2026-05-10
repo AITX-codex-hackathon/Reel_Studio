@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .openai_client import OpenAIClient, OpenAIUnavailable
+from .prompt_standard import CORE_REEL_SOP, IMAGE_ANALYSIS_SOP
 
 log = logging.getLogger(__name__)
 
@@ -80,7 +81,8 @@ _SYSTEM = (
     "You are the visual intelligence layer for a premium AI real-estate reel editor. "
     "Analyze the actual uploaded listing photo only. Be precise and conservative: do not "
     "invent unseen rooms, luxury features, views, pools, or furniture. Return exactly one "
-    "valid JSON object and no prose."
+    "valid JSON object and no prose.\n\n"
+    f"{CORE_REEL_SOP}\n\n{IMAGE_ANALYSIS_SOP}"
 )
 
 _USER_TEMPLATE = """Analyze this real-estate listing photo for a cinematic reel planner.
@@ -108,6 +110,7 @@ Rules:
 - Use "lifestyle" only for staging/detail photos intended to sell mood rather than a room.
 - Penalize quality_score for blur, compression, low resolution, dark exposure, harsh flash, clutter, crooked lines, reflections, or visible people.
 - suggested_motion must be calm commercial real-estate motion, not hype/action movement.
+- Notes and cinematic_strengths must be useful to a later storyboard director deciding scene purpose, camera path, masking risk, and transition continuity.
 """
 
 
