@@ -21,7 +21,6 @@ import yaml
 from pydantic import ValidationError
 
 from .openai_client import OpenAIClient, OpenAIUnavailable
-from .vlm_factory import get_vlm_client
 from ..models.template import Template
 
 log = logging.getLogger(__name__)
@@ -105,8 +104,8 @@ Property name (use as the template name if appropriate): {name}
 
 
 class PromptTranslator:
-    def __init__(self, claude: Optional[ClaudeClient] = None):
-        self.claude = claude or ClaudeClient()
+    def __init__(self, llm: Optional[OpenAIClient] = None):
+        self.llm = llm or OpenAIClient()
 
     async def translate(self, brief: str, name: Optional[str] = None) -> Template:
         if not self.llm.enabled:

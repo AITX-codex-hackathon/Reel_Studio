@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { ArrowRight, Check, Loader2, Sparkles, Wand2 } from "lucide-react";
+import { Activity, ArrowRight, Check, Loader2, Radio, Sparkles, Wand2 } from "lucide-react";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
@@ -20,11 +20,13 @@ import {
   type Storyboard,
   type Template,
   type Upload,
+  type WorkflowSnapshotEvent,
 } from "@/lib/api";
-import { connectProgressWS, type ProgressMessage } from "@/lib/ws";
+import { connectProgressWS, type WorkflowMessage } from "@/lib/ws";
 import { cn } from "@/lib/utils";
 
 type Step = "upload" | "template" | "music" | "storyboard" | "render";
+type WorkflowEvent = WorkflowMessage & { id: string; at: number };
 
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = use(params);
@@ -40,6 +42,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [generatingStoryboard, setGeneratingStoryboard] = useState(false);
 
   const [liveProgress, setLiveProgress] = useState<Record<string, number>>({});
+  const [renderMessages, setRenderMessages] = useState<Record<string, string>>({});
+  const [renderPhases, setRenderPhases] = useState<Record<string, string>>({});
+  const [workflowEvents, setWorkflowEvents] = useState<WorkflowEvent[]>([]);
 
   // Initial load
   useEffect(() => {
@@ -67,27 +72,71 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     });
   }, [projectId]);
 
-  // WebSocket: live render progress
+  // WebSocket: live workflow/render progress
   useEffect(() => {
-    const close = connectProgressWS(projectId, (msg: ProgressMessage) => {
-      if (msg.progress != null) {
-        setLiveProgress((prev) => ({ ...prev, [msg.render_id]: msg.progress! }));
+    const applyMessage = (msg: WorkflowMessage, mode: "append" | "snapshot" = "append") => {
+      if (msg.message || msg.status === "failed" || msg.status === "succeeded") {
+        const event = toWorkflowEvent(msg);
+        setWorkflowEvents((events) => (
+          mode === "snapshot"
+            ? [event, ...events].slice(0, 10)
+            : [event, ...events].slice(0, 10)
+        ));
+      }
+      const renderId = msg.render_id;
+      if (renderId && msg.progress != null) {
+        setLiveProgress((prev) => ({ ...prev, [renderId]: msg.progress! }));
+      }
+      if (renderId && msg.message) {
+        setRenderMessages((prev) => ({ ...prev, [renderId]: msg.message! }));
+      }
+      if (renderId && msg.phase) {
+        setRenderPhases((prev) => ({ ...prev, [renderId]: msg.phase! }));
       }
       if (msg.status === "succeeded" || msg.status === "failed") {
         api.listRenders(projectId).then(setRenders);
       }
-    });
+    };
+
+    const catchUp = () => {
+      api.getWorkflowCurrent(projectId)
+        .then((snapshot) => {
+          const events = snapshot.events
+            .filter((event) => event.message || event.status === "failed" || event.status === "succeeded")
+            .map(toWorkflowEvent)
+            .slice(0, 10);
+          setWorkflowEvents(events);
+          for (const event of snapshot.events) {
+            const renderId = event.render_id;
+            if (renderId && event.progress != null) {
+              setLiveProgress((prev) => ({ ...prev, [renderId]: event.progress! }));
+            }
+            if (renderId && event.message) {
+              setRenderMessages((prev) => ({ ...prev, [renderId]: event.message! }));
+            }
+            if (renderId && event.phase) {
+              setRenderPhases((prev) => ({ ...prev, [renderId]: event.phase! }));
+            }
+          }
+        })
+        .catch(() => {});
+    };
+
+    catchUp();
+    const close = connectProgressWS(projectId, (msg: WorkflowMessage) => applyMessage(msg), catchUp);
     return close;
   }, [projectId]);
 
   const onGenerateStoryboard = async () => {
     if (!selectedTemplate) return;
     setGeneratingStoryboard(true);
+    pushLocalEvent("storyboard", "Analyzing photos...");
     try {
       const sb = await api.generateStoryboard(projectId, selectedTemplate);
       setStoryboard(sb);
       setStep("storyboard");
     } catch (e) {
+      pushLocalEvent("storyboard", `Storyboard failed: ${e instanceof Error ? e.message : e}`, "failed");
       const savedStoryboard = await api.getStoryboard(projectId).catch(() => null);
       if (savedStoryboard) {
         setStoryboard(savedStoryboard);
@@ -102,12 +151,33 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const onRender = async (passType: "draft" | "final") => {
     try {
+      pushLocalEvent("render", `${passType === "draft" ? "Draft" : "Final"} render queued.`);
       const job = await api.startRender(projectId, passType);
       setRenders((rs) => [job, ...rs]);
       setStep("render");
     } catch (e) {
+      pushLocalEvent("render", `Render failed to start: ${e instanceof Error ? e.message : e}`, "failed");
       alert(`Render failed to start: ${e instanceof Error ? e.message : e}`);
     }
+  };
+
+  const pushLocalEvent = (
+    stage: string,
+    message: string,
+    status: WorkflowMessage["status"] = "running",
+  ) => {
+    const event: WorkflowEvent = {
+      id: `${Date.now()}-${Math.random()}`,
+      at: Date.now(),
+      type: "workflow",
+      stage,
+      message,
+      status,
+    };
+    setWorkflowEvents((events) => [
+      event,
+      ...events,
+    ].slice(0, 10));
   };
 
   if (!project) {
@@ -150,6 +220,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         hasMusic={!!currentMusic}
         hasStoryboard={!!storyboard}
       />
+
+      <WorkflowTelemetry events={workflowEvents} />
 
       {/* Step content */}
       {step === "upload" && (
@@ -318,6 +390,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     projectId={projectId}
                     job={r}
                     liveProgress={liveProgress[r.id]}
+                    liveMessage={renderMessages[r.id]}
+                    livePhase={renderPhases[r.id]}
                   />
                 ))}
               </div>
@@ -327,6 +401,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       )}
     </div>
   );
+}
+
+function toWorkflowEvent(message: WorkflowMessage | WorkflowSnapshotEvent): WorkflowEvent {
+  const createdAt = message.created_at ? message.created_at * 1000 : Date.now();
+  return {
+    ...message,
+    id: `${createdAt}-${message.render_id || message.stage || message.phase || "workflow"}-${Math.random()}`,
+    at: createdAt,
+  };
 }
 
 function Stepper({
@@ -393,6 +476,49 @@ function Stepper({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function WorkflowTelemetry({ events }: { events: WorkflowEvent[] }) {
+  if (events.length === 0) return null;
+  const latest = events[0];
+  return (
+    <div className="rounded-2xl border border-primary-100 bg-white px-4 py-3 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl bg-primary-50 text-primary-700">
+          {latest.status === "running" || latest.status === "queued" ? (
+            <Radio className="h-4 w-4" />
+          ) : (
+            <Activity className="h-4 w-4" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-sm font-medium text-ink">
+              {latest.message || "Working…"}
+            </p>
+            {(latest.stage || latest.phase) && (
+              <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700">
+                {latest.phase || latest.stage}
+              </span>
+            )}
+          </div>
+          <div className="mt-2 grid gap-1">
+            {events.slice(1, 4).map((event) => (
+              <div key={event.id} className="flex items-center gap-2 text-xs text-ink-muted">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary-300" />
+                <span className="truncate">{event.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        {typeof latest.progress === "number" && (
+          <div className="shrink-0 text-sm font-semibold text-primary-700">
+            {Math.round(latest.progress * 100)}%
+          </div>
+        )}
+      </div>
     </div>
   );
 }

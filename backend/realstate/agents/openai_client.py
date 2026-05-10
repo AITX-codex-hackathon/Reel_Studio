@@ -11,7 +11,7 @@ import logging
 import mimetypes
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +29,12 @@ class OpenAIClient:
     ):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o")
-        self.vision_model = vision_model or os.getenv("VLM_MODEL") or os.getenv("OPENAI_VISION_MODEL", "gpt-4o")
+        self.vision_model = (
+            vision_model
+            or os.getenv("OPENAI_ANALYZER_MODEL")
+            or os.getenv("VLM_MODEL")
+            or os.getenv("OPENAI_VISION_MODEL", "gpt-4o")
+        )
         self._client = None
 
     @property
@@ -53,16 +58,23 @@ class OpenAIClient:
         user: str,
         max_tokens: int = 2048,
         model: Optional[str] = None,
+        response_format: Optional[dict[str, Any]] = None,
+        temperature: Optional[float] = None,
     ) -> str:
         client = self._client_or_raise()
-        resp = await client.chat.completions.create(
-            model=model or self.model,
-            max_tokens=max_tokens,
-            messages=[
+        kwargs: dict[str, Any] = {
+            "model": model or self.model,
+            "max_tokens": max_tokens,
+            "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-        )
+        }
+        if response_format:
+            kwargs["response_format"] = response_format
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        resp = await client.chat.completions.create(**kwargs)
         return resp.choices[0].message.content or ""
 
     async def vision(
@@ -71,6 +83,8 @@ class OpenAIClient:
         user_text: str,
         image_path: Path,
         max_tokens: int = 1024,
+        response_format: Optional[dict[str, Any]] = None,
+        temperature: Optional[float] = None,
     ) -> str:
         """Send a single image + text prompt to the vision model and return text."""
         client = self._client_or_raise()
@@ -82,10 +96,10 @@ class OpenAIClient:
         with open(image_path, "rb") as f:
             data = base64.standard_b64encode(f.read()).decode()
 
-        resp = await client.chat.completions.create(
-            model=self.vision_model,
-            max_tokens=max_tokens,
-            messages=[
+        kwargs: dict[str, Any] = {
+            "model": self.vision_model,
+            "max_tokens": max_tokens,
+            "messages": [
                 {"role": "system", "content": system},
                 {
                     "role": "user",
@@ -98,5 +112,10 @@ class OpenAIClient:
                     ],
                 },
             ],
-        )
+        }
+        if response_format:
+            kwargs["response_format"] = response_format
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        resp = await client.chat.completions.create(**kwargs)
         return resp.choices[0].message.content or ""

@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from .agents.image_analyzer import ImageAnalyzer, ImageAnalysisResult
 from .agents.shot_matcher import AnalyzedUpload, ShotMatcher
-from .data.style_recipes import ROOM_ORDER, get_for_room
+from .data.style_recipes import get_cinematic_for_room
 from .models.project import Project
 from .models.storyboard import ResolvedShot, Storyboard, StoryboardMusic
 from .models.template import Template
@@ -18,6 +19,7 @@ from .storage.filesystem import ProjectFiles
 log = logging.getLogger(__name__)
 
 _CLIP_DURATION_SEC = 5.0  # fixed until beat-analysis module is wired in
+TelemetryCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 class StoryboardBuilder:
@@ -26,14 +28,13 @@ class StoryboardBuilder:
         analyzer: Optional[ImageAnalyzer] = None,
         matcher: Optional[ShotMatcher] = None,
         scheduler: Optional[PacingScheduler] = None,
-        nano_banana: Optional[NanoBananaClient] = None,
         project_files: Optional[ProjectFiles] = None,
     ):
         self.analyzer = analyzer or ImageAnalyzer()
         self.matcher = matcher or ShotMatcher()
         self.scheduler = scheduler or PacingScheduler()
-        self.nano_banana = nano_banana or NanoBananaClient()
         self.project_files = project_files or ProjectFiles()
+        self.last_analyses_by_upload_id: dict[str, ImageAnalysisResult] = {}
 
     async def build(
         self,
@@ -43,56 +44,64 @@ class StoryboardBuilder:
         audio_path_for_pacing: Optional[Path] = None,
         beat_timestamps_ms: Optional[list[int]] = None,
         music: Optional[StoryboardMusic] = None,
+        telemetry: Optional[TelemetryCallback] = None,
     ) -> Storyboard:
-        # 1. Analyze any unanalyzed uploads
-        analyzed: list[AnalyzedUpload] = []
-        for upload_id, path, cached in uploads:
-            if cached is None:
-                cached = await self.analyzer.analyze(path)
-            analyzed.append(AnalyzedUpload(upload_id=upload_id, image_path=str(path), analysis=cached))
+        # 1. Analyze any unanalyzed uploads concurrently, then cache them in the API layer.
+        await _emit(
+            telemetry,
+            stage="storyboard",
+            message=f"Analyzing {len(uploads)} photo{'s' if len(uploads) != 1 else ''} for room type, quality, framing, and cinematic use.",
+            progress=0.08,
+        )
+        analyzed = await self._analyze_uploads(uploads, telemetry=telemetry)
 
-        # 2. Match images to slots
-        match = self.matcher.match(template, analyzed)
+        # 2. Match images to slots. Storyboard generation only plans; render generates FAL clips later.
+        await _emit(
+            telemetry,
+            stage="storyboard",
+            message="Planning story order, shot assignments, camera motion, and beat-aware pacing.",
+            progress=0.58,
+        )
+        music_context = _music_context(music, beat_timestamps_ms)
+        match = await self.matcher.match(template, analyzed, music_context=music_context)
 
-        # 3. Build shots — no image generation at storyboard time; FAL handles it during render
+        # 3. Build shots with style recipes. With any real uploads present, reuse real photos
+        # instead of spawning generated filler rooms.
         upload_by_id = {u.upload_id: u for u in analyzed}
-        generated_paths: dict[str, Path] = {}
-        for slot_id in match.needs_generation:
-            slot = template.slot_by_id[slot_id]
-            prompt = slot.generation_prompt or slot.description
-            out_path = self.project_files.generated_dir(project.id) / f"{slot_id}.jpg"
-            generated = await self.nano_banana.generate(
-                prompt=prompt,
-                out_path=out_path,
-                aspect_ratio=template.aspect_ratio,
-            )
-            if generated:
-                generated_paths[slot_id] = generated
-            else:
-                # generation failed — push to unfilled
-                log.info("Generation failed for slot %s; marking unfilled", slot_id)
+        slot_by_id = template.slot_by_id
+        ordered_slots = [slot_by_id[slot_id] for slot_id in match.slot_order if slot_id in slot_by_id]
+        ordered_slots.extend(slot for slot in template.shot_slots if slot.slot_id not in {s.slot_id for s in ordered_slots})
+        ordered_slots = _adapt_slots_to_upload_count(ordered_slots, len(analyzed))
+        await _emit(
+            telemetry,
+            stage="storyboard",
+            message=f"Writing cinematic style recipes for {len(ordered_slots)} planned shots.",
+            progress=0.78,
+        )
 
-        # Final unfilled list
-        final_unfilled = list(match.unfilled)
-        for slot_id in match.needs_generation:
-            if slot_id not in generated_paths:
-                final_unfilled.append(slot_id)
-
-        # 4. Pacing — compute timings (using audio if provided)
-        timings = self.scheduler.schedule(template, str(audio_path_for_pacing) if audio_path_for_pacing else None)
+        ordered_template = template.model_copy(update={"shot_slots": ordered_slots})
+        timings = self.scheduler.schedule(
+            ordered_template,
+            str(audio_path_for_pacing) if audio_path_for_pacing else None,
+            beat_timestamps_ms=beat_timestamps_ms,
+        )
         timing_by_slot = {t.slot_id: t for t in timings}
+        overlay_by_id = template.text_overlay_by_id
 
         shots: list[ResolvedShot] = []
-        for slot in template.shot_slots:
+        cursor = 0.0
+        for index, slot in enumerate(ordered_slots):
             assigned_id = match.assignments.get(slot.slot_id)
+            upload_analysis: Optional[ImageAnalysisResult] = None
 
             if assigned_id and assigned_id in upload_by_id:
                 image_path = upload_by_id[assigned_id].image_path
-                room_type = upload_by_id[assigned_id].analysis.room_type or slot.room_type
+                upload_analysis = upload_by_id[assigned_id].analysis
+                room_type = upload_analysis.room_type or slot.room_type
                 is_generated = False
                 source_upload_id = assigned_id
-            elif slot.must_fill:
-                # No matching upload — mark as generated (FAL t2v will fill during render)
+            elif slot.must_fill and slot.fallback_to_generated:
+                # No matching upload: leave image_path empty so render uses FAL text-to-video.
                 image_path = ""
                 room_type = slot.room_type
                 is_generated = True
@@ -100,42 +109,60 @@ class StoryboardBuilder:
             else:
                 continue  # optional slot, drop it
 
-            # Auto-select style recipe based on room type
-            recipe = get_for_room(room_type, seed=i)
-
             timing = timing_by_slot.get(slot.slot_id)
+            duration_sec = _clip_duration(timing.duration_sec if timing else slot.duration_sec)
             override = match.style_overrides.get(slot.slot_id, {})
-            duration_sec = timing.duration_sec if timing else slot.duration_sec
+            recipe = get_cinematic_for_room(room_type, seed=index)
+            style_notes = str(override.get("style_notes") or "").strip()
+            if upload_analysis and slot.room_type and upload_analysis.room_type != slot.room_type:
+                style_notes = (
+                    f"{style_notes} The source upload is analyzed as {upload_analysis.room_type}, "
+                    f"not {slot.room_type}; preserve the real source image and treat this as a grounded "
+                    "bridge shot instead of inventing a missing room."
+                ).strip()
+            style_recipe_prompt = _style_recipe_prompt(
+                project=project,
+                slot_description=slot.description,
+                room_type=room_type,
+                recipe=recipe,
+                style_notes=style_notes,
+                music_context=music_context,
+                has_source_image=bool(image_path),
+            )
+            rendered_text = None
+            if slot.text_overlay_id and slot.text_overlay_id in overlay_by_id:
+                rendered_text = _render_text_overlay(overlay_by_id[slot.text_overlay_id].text_template, project)
+
             shots.append(
                 ResolvedShot(
                     slot_id=slot.slot_id,
                     image_path=image_path,
-                    start_time_sec=timing.start_time_sec if timing else 0.0,
-                    duration_sec=timing.duration_sec if timing else slot.duration_sec,
-                    motion=slot.motion,
-                    motion_strength=slot.motion_strength,
-                    transition_in=slot.transition_in,
-                    color_grade=slot.color_grade,
+                    start_time_sec=cursor,
+                    duration_sec=duration_sec,
+                    motion=override.get("motion", slot.motion),
+                    motion_strength=override.get("motion_strength", slot.motion_strength),
+                    transition_in=override.get("transition_in", slot.transition_in),
+                    color_grade=override.get("color_grade", slot.color_grade),
                     text_overlay_id=slot.text_overlay_id,
                     rendered_text_overlay=rendered_text,
                     is_generated=is_generated,
                     source_upload_id=source_upload_id,
                     room_type=room_type,
                     style_recipe_id=recipe.style_id if recipe else None,
+                    style_notes=style_notes or None,
+                    style_recipe_prompt=style_recipe_prompt,
                 )
             )
-            timeline_t += duration_sec
-
-        # Sort shots into house-tour order
-        shots.sort(key=lambda s: ROOM_ORDER.get(s.room_type or "", 99))
-
-        # Recompute start times after sort
-        cursor = 0.0
-        for s in shots:
-            s.start_time_sec = cursor
-            cursor += s.duration_sec
+            cursor += duration_sec
 
         total = cursor or template.target_duration_sec
+        await _emit(
+            telemetry,
+            stage="storyboard",
+            message=f"Storyboard ready: {len(shots)} shots, {len([s for s in shots if s.is_generated])} generated fallbacks, {total:.1f}s total.",
+            status="succeeded",
+            progress=1.0,
+        )
 
         return Storyboard(
             storyboard_id=str(uuid.uuid4()),
@@ -144,12 +171,182 @@ class StoryboardBuilder:
             shots=shots,
             audio_cues=template.audio_cues,
             text_overlays=template.text_overlays,
+            music=music,
             total_duration_sec=total,
             aspect_ratio=template.aspect_ratio,
+            beat_timestamps=[ms / 1000 for ms in (beat_timestamps_ms or [])],
             generated_slot_ids=[s.slot_id for s in shots if s.is_generated],
             unfilled_slot_ids=list(match.unfilled),
             notes=match.notes,
         )
+
+    async def _analyze_uploads(
+        self,
+        uploads: list[tuple[str, Path, Optional[ImageAnalysisResult]]],
+        telemetry: Optional[TelemetryCallback] = None,
+    ) -> list[AnalyzedUpload]:
+        self.last_analyses_by_upload_id = {}
+        semaphore = asyncio.Semaphore(4)
+        completed = 0
+        total = len(uploads)
+        lock = asyncio.Lock()
+
+        async def analyze_one(item: tuple[str, Path, Optional[ImageAnalysisResult]]) -> AnalyzedUpload:
+            nonlocal completed
+            upload_id, path, cached = item
+            if cached is None:
+                async with semaphore:
+                    cached = await self.analyzer.analyze(path)
+            self.last_analyses_by_upload_id[upload_id] = cached
+            async with lock:
+                completed += 1
+                await _emit(
+                    telemetry,
+                    stage="storyboard",
+                    message=(
+                        f"Analyzed photo {completed} of {total}: "
+                        f"{cached.room_type.replace('_', ' ')}, {cached.framing}, quality {cached.quality_score:.2f}."
+                    ),
+                    progress=0.10 + 0.45 * (completed / max(total, 1)),
+                    detail={
+                        "current": completed,
+                        "total": total,
+                        "upload_id": upload_id,
+                        "room_type": cached.room_type,
+                    },
+                )
+            return AnalyzedUpload(upload_id=upload_id, image_path=str(path), analysis=cached)
+
+        return list(await asyncio.gather(*(analyze_one(upload) for upload in uploads)))
+
+
+def _adapt_slots_to_upload_count(slots: list, upload_count: int) -> list:
+    if upload_count <= 0 or upload_count >= 5 or len(slots) <= 3:
+        return slots
+    target = min(len(slots), max(3, upload_count * 2))
+    if target >= len(slots):
+        return slots
+
+    step = (len(slots) - 1) / (target - 1)
+    indexes = sorted({round(i * step) for i in range(target)})
+    while len(indexes) < target:
+        for i in range(len(slots)):
+            if i not in indexes:
+                indexes.append(i)
+                indexes.sort()
+                break
+    return [slots[i] for i in indexes[:target]]
+
+
+def _clip_duration(duration_sec: float) -> float:
+    return max(2.5, min(float(duration_sec), _CLIP_DURATION_SEC))
+
+
+async def _emit(
+    telemetry: Optional[TelemetryCallback],
+    *,
+    stage: str,
+    message: str,
+    status: str = "running",
+    progress: Optional[float] = None,
+    detail: Optional[dict[str, Any]] = None,
+) -> None:
+    if not telemetry:
+        return
+    payload: dict[str, Any] = {"stage": stage, "status": status, "message": message}
+    if progress is not None:
+        payload["progress"] = max(0.0, min(1.0, progress))
+    if detail:
+        payload.update(detail)
+    await telemetry(payload)
+
+
+def _music_context(music: Optional[StoryboardMusic], beat_timestamps_ms: Optional[list[int]]) -> str:
+    if not music:
+        return ""
+    beat_count = len(beat_timestamps_ms or music.beat_timestamps_ms)
+    return (
+        f"Selected music: {music.artist} - {music.title}. "
+        f"Tempo: {music.tempo or 'unknown'} BPM. Stored beat timestamps: {beat_count}. "
+        "Use the audio to support dramatic but calm commercial cuts."
+    )
+
+
+def _style_recipe_prompt(
+    project: Project,
+    slot_description: str,
+    room_type: Optional[str],
+    recipe,
+    style_notes: str,
+    music_context: str,
+    has_source_image: bool,
+) -> str:
+    property_bits = [project.name, project.address, project.description]
+    property_context = ". ".join(bit for bit in property_bits if bit)
+    recipe_bits = []
+    if recipe:
+        recipe_bits = [
+            f"Style recipe {recipe.style_id}: {recipe.category}.",
+            f"Mood: {recipe.mood}.",
+            f"Camera motion: {recipe.camera_motion}.",
+            f"Environmental dynamics: {recipe.environmental_dynamics}.",
+            f"Recipe direction: {recipe.video_prompt}",
+        ]
+
+    grounding = (
+        "Use the provided source image as the absolute visual truth: preserve the real architecture, "
+        "layout, room identity, materials, window placement, furniture, landscaping, and color palette. "
+        "Do not create new rooms, extra floors, impossible geometry, signage, text, people, logos, "
+        "watermarks, or distorted fixtures."
+        if has_source_image
+        else
+        "No source photo is available for this slot, so generate only a restrained real-estate bridge "
+        "shot that matches the property context. Avoid impossible architecture and avoid adding text."
+    )
+
+    return " ".join(
+        part
+        for part in [
+            "Premium cinematic real-estate reel shot.",
+            f"Storyboard need: {slot_description}.",
+            f"Grounded room/visual anchor: {room_type or 'property detail'}.",
+            f"Property context: {property_context}." if property_context else "",
+            *recipe_bits,
+            f"Editor-agent direction: {style_notes}" if style_notes else "",
+            f"Audio/editing context: {music_context}" if music_context else "",
+            grounding,
+            "Make the motion smooth, expensive, calm, dramatic, and commercial. Favor controlled dolly, "
+            "slider, crane, parallax, soft light movement, natural reflections, subtle atmosphere, and "
+            "clean editorial timing over hype, whip-heavy, trap-style, or chaotic movement.",
+        ]
+        if part
+    )
+
+
+def _render_text_overlay(template: str, project: Project) -> Optional[str]:
+    values = {
+        "address": project.address or "",
+        "price": project.price or "",
+        "beds": "" if project.beds is None else str(project.beds),
+        "baths": "" if project.baths is None else str(project.baths),
+        "sqft": "" if project.sqft is None else str(project.sqft),
+        "name": project.name or "",
+        "description": project.description or "",
+    }
+    has_property_placeholder = "property." in template
+    has_value_for_placeholder = any(
+        value and f"property.{key}" in template
+        for key, value in values.items()
+    )
+    if has_property_placeholder and not has_value_for_placeholder:
+        return None
+
+    rendered = template
+    for key, value in values.items():
+        rendered = rendered.replace(f"{{{{ property.{key} }}}}", value)
+        rendered = rendered.replace(f"{{{{property.{key}}}}}", value)
+    rendered = "\n".join(line.strip() for line in rendered.splitlines()).strip()
+    return rendered or None
 
 
 def _fallback_generation_prompt(project: Project, slot_description: str, style_notes: str = "") -> str:

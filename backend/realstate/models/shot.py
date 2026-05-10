@@ -73,6 +73,14 @@ class Shot(BaseModel):
     # Style recipe fields — set during storyboard build
     room_type: Optional[str] = None
     style_recipe_id: Optional[str] = None
+    style_notes: Optional[str] = Field(
+        None,
+        description="Editor-agent direction for camera, mood, transitions, and story intent.",
+    )
+    style_recipe_prompt: Optional[str] = Field(
+        None,
+        description="Grounded cinematic prompt passed to the video provider for this shot.",
+    )
 
     # Set during render — path to FAL-generated .mp4 clip
     video_clip_path: Optional[str] = None

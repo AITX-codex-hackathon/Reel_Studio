@@ -23,6 +23,7 @@ dist/
 .env.local
 
 # Storage
+storage_data/*
 backend/storage_data/*
 !backend/storage_data/.gitkeep
 backend/audio_library/*

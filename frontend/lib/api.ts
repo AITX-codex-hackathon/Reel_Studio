@@ -176,6 +176,28 @@ export type VideoStyle = {
   video_prompt: string;
 };
 
+export type WorkflowSnapshotEvent = {
+  type?: "workflow" | "render";
+  stage?: string;
+  phase?: string;
+  status?: "queued" | "running" | "succeeded" | "failed";
+  message?: string;
+  progress?: number;
+  render_id?: string;
+  pass_type?: "draft" | "final";
+  current?: number;
+  total?: number;
+  shot_id?: string;
+  error?: string;
+  created_at?: number;
+};
+
+export type WorkflowSnapshot = {
+  project_id: string;
+  connected_clients: number;
+  events: WorkflowSnapshotEvent[];
+};
+
 // ---- Endpoints ----
 export const api = {
   health: () => request<Health>("/health"),
@@ -239,6 +261,8 @@ export const api = {
     request<RenderJob[]>(`/projects/${projectId}/renders`),
   renderFileUrl: (projectId: string, renderId: string) =>
     `${BASE}/projects/${projectId}/renders/${renderId}/file`,
+  getWorkflowCurrent: (projectId: string) =>
+    request<WorkflowSnapshot>(`/projects/${projectId}/workflow/current`),
 
   // audio
   listTracks: () => request<AudioTrack[]>("/audio"),

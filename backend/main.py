@@ -63,7 +63,7 @@ app.add_middleware(
 def health() -> dict:
     return {
         "status": "ok",
-        "vlm": f"{settings.vlm_provider}/{settings.vlm_model}",
+        "vlm": f"openai/{settings.openai_vision_model}",
         "providers": {
             "openai": bool(settings.openai_api_key),
             "fal": bool(settings.fal_key),

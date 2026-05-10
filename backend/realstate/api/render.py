@@ -68,6 +68,17 @@ async def start_render(
     db.refresh(job)
 
     job_id = job.id
+    await broadcast_render_progress(
+        project_id,
+        {
+            "render_id": job_id,
+            "pass_type": pass_type,
+            "status": "queued",
+            "phase": "queued",
+            "progress": 0.0,
+            "message": f"{pass_type.title()} render queued. Preparing the render worker.",
+        },
+    )
     background_tasks.add_task(
         _run_render,
         job_id=job_id,
@@ -135,6 +146,17 @@ async def _run_render(
             return
         row.status = RenderStatus.RUNNING.value
         db.commit()
+    await broadcast_render_progress(
+        project_id,
+        {
+            "render_id": job_id,
+            "pass_type": pass_type,
+            "status": "running",
+            "phase": "starting",
+            "progress": 0.0,
+            "message": "Starting render pipeline.",
+        },
+    )
 
     try:
         gen = (
@@ -162,6 +184,11 @@ async def _run_render(
                         "progress": progress.progress,
                         "seconds_done": progress.seconds_done,
                         "fps": progress.fps,
+                        "phase": progress.phase,
+                        "message": progress.message,
+                        "current": progress.current,
+                        "total": progress.total,
+                        "shot_id": progress.shot_id,
                     },
                 )
 
@@ -182,6 +209,8 @@ async def _run_render(
                 "pass_type": pass_type,
                 "progress": 1.0,
                 "status": "succeeded",
+                "phase": "complete",
+                "message": "Render complete. The reel is ready to review.",
                 "output_url": f"/projects/{project_id}/renders/{job_id}/file",
             },
         )
@@ -201,6 +230,8 @@ async def _run_render(
                 "render_id": job_id,
                 "pass_type": pass_type,
                 "status": "failed",
+                "phase": "failed",
+                "message": "Render failed.",
                 "error": str(e)[:500],
             },
         )
