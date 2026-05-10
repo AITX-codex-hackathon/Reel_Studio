@@ -11,6 +11,7 @@ from typing import AsyncIterator, Optional
 from ..data.style_recipes import get_by_id, get_cinematic_for_room
 from ..integrations.elevenlabs import ElevenLabsClient
 from ..integrations.fal_client import FalClient
+from ..integrations.fal_image import FalImageClient
 from ..integrations.stock_audio import StockAudioLibrary
 from ..models.render_config import RenderConfig
 from ..models.storyboard import Storyboard
@@ -36,6 +37,7 @@ class ReelPipeline:
         stock_audio: Optional[StockAudioLibrary] = None,
         elevenlabs: Optional[ElevenLabsClient] = None,
         fal: Optional[FalClient] = None,
+        fal_image: Optional[FalImageClient] = None,
         font_path: Optional[str] = None,
     ):
         self.builder = builder or FFmpegBuilder(font_path=font_path)
@@ -43,6 +45,9 @@ class ReelPipeline:
         self.stock_audio = stock_audio or StockAudioLibrary()
         self.elevenlabs = elevenlabs or ElevenLabsClient()
         self.fal = fal or FalClient()
+        self.fal_image = fal_image or FalImageClient(
+            edit_model=os.getenv("FAL_VERTICAL_IMAGE_MODEL", "fal-ai/nano-banana/edit")
+        )
 
     async def render(
         self,
@@ -76,6 +81,122 @@ class ReelPipeline:
             )
             semaphore = asyncio.Semaphore(concurrency)
             event_queue: asyncio.Queue[RenderProgress] = asyncio.Queue()
+            vertical_source_paths: dict[int, Path] = {}
+            source_prep_end = 0.0
+
+            if _vertical_reel_sources_enabled(config) and self.fal_image.enabled:
+                source_indices = [index for index, shot in enumerate(shots) if _source_image_exists(shot)]
+                if source_indices:
+                    source_prep_end = 0.08
+                    source_order = {index: order for order, index in enumerate(source_indices, start=1)}
+                    vertical_concurrency = _vertical_image_concurrency(
+                        total=len(source_indices),
+                        fallback=concurrency,
+                    )
+                    vertical_semaphore = asyncio.Semaphore(vertical_concurrency)
+                    vertical_completed = 0
+
+                    yield RenderProgress(
+                        progress=0.0,
+                        seconds_done=0.0,
+                        fps=0.0,
+                        phase="fal_image",
+                        message=(
+                            f"Preparing {len(source_indices)} full-frame vertical source image"
+                            f"{'s' if len(source_indices) != 1 else ''} with Nano Banana "
+                            f"at concurrency {vertical_concurrency}."
+                        ),
+                        total=len(source_indices),
+                    )
+
+                    async def reframe_one(i: int):
+                        async with vertical_semaphore:
+                            shot = shots[i]
+                            source_path = Path(shot.image_path)
+                            await event_queue.put(
+                                RenderProgress(
+                                    progress=0.0,
+                                    seconds_done=0.0,
+                                    fps=0.0,
+                                    phase="fal_image",
+                                    message=(
+                                        f"Reframing source {source_order[i]} of "
+                                        f"{len(source_indices)} for Instagram Reels: "
+                                        f"{shot.slot_id.replace('_', ' ')}."
+                                    ),
+                                    current=source_order[i],
+                                    total=len(source_indices),
+                                    shot_id=shot.slot_id,
+                                )
+                            )
+                            out_path = scratch / "vertical_sources" / (
+                                f"source_{i:02d}_{_safe_file_part(shot.slot_id)}_"
+                                f"{_safe_file_part(source_path.stem)}.jpg"
+                            )
+                            prepared = await self.fal_image.reframe_to_reel(
+                                source=source_path,
+                                out_path=out_path,
+                                intent=_vertical_reframe_intent(storyboard, shot),
+                            )
+                            return i, prepared
+
+                    vertical_tasks = {asyncio.create_task(reframe_one(i)) for i in source_indices}
+                    while vertical_tasks:
+                        while not event_queue.empty():
+                            event = await event_queue.get()
+                            event.progress = (vertical_completed / len(source_indices)) * source_prep_end
+                            yield event
+
+                        done, vertical_tasks = await asyncio.wait(
+                            vertical_tasks,
+                            timeout=0.25,
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+                        for task in done:
+                            i, prepared = await task
+                            vertical_completed += 1
+                            shot = shots[i]
+                            if prepared:
+                                vertical_source_paths[i] = prepared
+                                message = (
+                                    f"Vertical source ready {vertical_completed} of {len(source_indices)}: "
+                                    f"{shot.slot_id.replace('_', ' ')}."
+                                )
+                            else:
+                                message = (
+                                    f"Vertical source prep failed for {shot.slot_id.replace('_', ' ')}; "
+                                    "using the original image for this shot."
+                                )
+                            yield RenderProgress(
+                                progress=(vertical_completed / len(source_indices)) * source_prep_end,
+                                seconds_done=0.0,
+                                fps=0.0,
+                                phase="fal_image",
+                                message=message,
+                                current=vertical_completed,
+                                total=len(source_indices),
+                                shot_id=shot.slot_id,
+                            )
+
+                    while not event_queue.empty():
+                        event = await event_queue.get()
+                        event.progress = source_prep_end
+                        yield event
+
+                    yield RenderProgress(
+                        progress=source_prep_end,
+                        seconds_done=0.0,
+                        fps=0.0,
+                        phase="fal_image",
+                        message=(
+                            f"Vertical source prep complete: {len(vertical_source_paths)} of "
+                            f"{len(source_indices)} image{'s' if len(source_indices) != 1 else ''} ready."
+                        ),
+                        current=len(vertical_source_paths),
+                        total=len(source_indices),
+                    )
+            elif _vertical_reel_sources_enabled(config):
+                log.info("Nano Banana vertical prep disabled because no FAL image key/client is available")
 
             async def generate_one(i: int):
                 async with semaphore:
@@ -119,25 +240,34 @@ class ReelPipeline:
                         next_shot=shots[i + 1] if i + 1 < n else None,
                     )
 
-                    if shot.image_path and Path(shot.image_path).exists():
+                    render_ratio = _aspect_ratio_text(config.aspect_ratio) or "9:16"
+                    source_image_path = (
+                        vertical_source_paths.get(i)
+                        if _vertical_use_for_reels_enabled()
+                        else None
+                    ) or (Path(shot.image_path) if shot.image_path else None)
+
+                    if source_image_path and source_image_path.exists():
                         clip = await self.fal.image_to_video(
-                            image_path=Path(shot.image_path),
+                            image_path=source_image_path,
                             prompt=prompt,
                             out_path=clip_path,
                             duration_sec=shot.duration_sec + scene_handle_sec * 2 + motion_preroll_trim_sec,
+                            ratio=render_ratio,
                         )
                     else:
                         clip = await self.fal.text_to_video(
                             prompt=prompt,
                             out_path=clip_path,
                             duration_sec=shot.duration_sec + scene_handle_sec * 2 + motion_preroll_trim_sec,
+                            ratio=render_ratio,
                         )
                     return i, clip
 
             completed = 0
             tasks = {asyncio.create_task(generate_one(i)) for i in range(n)}
             yield RenderProgress(
-                progress=0.0,
+                progress=source_prep_end,
                 seconds_done=0.0,
                 fps=0.0,
                 phase="fal",
@@ -156,7 +286,7 @@ class ReelPipeline:
             while tasks:
                 while not event_queue.empty():
                     event = await event_queue.get()
-                    event.progress = completed / n * main_progress_end
+                    event.progress = source_prep_end + (completed / n) * (main_progress_end - source_prep_end)
                     yield event
 
                 done, tasks = await asyncio.wait(tasks, timeout=0.25, return_when=asyncio.FIRST_COMPLETED)
@@ -175,7 +305,7 @@ class ReelPipeline:
                         log.warning("FAL failed for shot %s — will skip", shots[i].slot_id)
                         message = f"Shot {shots[i].slot_id.replace('_', ' ')} failed in FAL; continuing with available clips."
                     yield RenderProgress(
-                        progress=completed / n * main_progress_end,
+                        progress=source_prep_end + (completed / n) * (main_progress_end - source_prep_end),
                         seconds_done=0.0,
                         fps=0.0,
                         phase="fal",
@@ -239,9 +369,19 @@ class ReelPipeline:
                         )
                         bridge_generation_duration = max(3.0, bridge_duration)
                         out_w, out_h = config.output_resolution()
+                        start_image_path = (
+                            vertical_source_paths.get(shot_index)
+                            if _vertical_use_for_reels_enabled()
+                            else None
+                        ) or Path(start_shot.image_path)
+                        end_image_path = (
+                            vertical_source_paths.get(shot_index + 1)
+                            if _vertical_use_for_reels_enabled()
+                            else None
+                        ) or Path(end_shot.image_path)
                         clip = await self.fal.first_last_frame_to_video(
-                            start_image_path=Path(start_shot.image_path),
-                            end_image_path=Path(end_shot.image_path),
+                            start_image_path=start_image_path,
+                            end_image_path=end_image_path,
                             prompt=_fal_transition_prompt(storyboard, start_shot, end_shot),
                             out_path=raw_clip_path,
                             duration_sec=bridge_generation_duration,
@@ -251,8 +391,8 @@ class ReelPipeline:
                         cooked = await cook_transition_bridge(
                             input_path=clip,
                             output_path=clip_path,
-                            start_image_path=Path(start_shot.image_path),
-                            end_image_path=Path(end_shot.image_path),
+                            start_image_path=start_image_path,
+                            end_image_path=end_image_path,
                             duration_sec=bridge_duration,
                             raw_duration_sec=bridge_generation_duration,
                             movement_intensity=_movement_intensity(start_shot),
@@ -379,7 +519,13 @@ class ReelPipeline:
             )
         else:
             # No FAL clips — fall back to Ken Burns on stills
-            updated = storyboard.model_copy(update={"shots": shots, "text_overlays": []})
+            updated = storyboard.model_copy(
+                update={
+                    "shots": shots,
+                    "text_overlays": [],
+                    "aspect_ratio": _aspect_ratio_text(config.aspect_ratio) or storyboard.aspect_ratio,
+                }
+            )
             cmd = self.builder.build(
                 storyboard=updated,
                 config=config,
@@ -465,6 +611,9 @@ def _motion_lead(shot) -> str:
         ]
     ).lower()
 
+    style_lead = _style_motion_lead(motion_text)
+    if style_lead:
+        return style_lead
     if strategy == "whip_pan":
         return "++Fast whip-pan camera move++"
     if strategy == "reveal" or profile == "reveal":
@@ -494,6 +643,32 @@ def _motion_lead(shot) -> str:
     if motion == "pan_down":
         return "++Tilt down immediately, smooth architectural reveal++"
     return "++Smooth continuous camera glide++"
+
+
+def _style_motion_lead(motion_text: str) -> str:
+    if not motion_text:
+        return ""
+    if any(token in motion_text for token in ("aerial", "top-down", "top view", "drone", "elevated")) and any(
+        token in motion_text for token in ("drop", "descend", "push")
+    ):
+        return "++Elevated drone-style descend and push-in++"
+    if "whip" in motion_text:
+        return "++Fast whip-pan camera move++"
+    if any(token in motion_text for token in ("lateral parallax slide left", "truck left", "slide left", "pan left")):
+        return "++Truck left with visible lateral parallax++"
+    if any(token in motion_text for token in ("lateral parallax slide right", "truck right", "slide right", "pan right")):
+        return "++Truck right with visible lateral parallax++"
+    if any(token in motion_text for token in ("pull back", "pull-back", "pull out", "reverse dolly", "zoom out")):
+        return "++Pull back reveal with smooth depth expansion++"
+    if any(token in motion_text for token in ("tilt up", "pedestal", "vertical lines", "ceiling scale")):
+        return "++Pedestal/tilt up through architectural lines++"
+    if any(token in motion_text for token in ("tilt down", "soft tilt down")):
+        return "++Tilt down into the focal plane++"
+    if any(token in motion_text for token in ("orbit", "micro parallax", "subtle orbit")):
+        return "++Subtle orbit-like parallax around the subject++"
+    if any(token in motion_text for token in ("parallax push", "push-in", "push in", "dolly in", "forward dolly")):
+        return "++Parallax push-in with clear cinematic motion++"
+    return ""
 
 
 def _bridge_motion_lead(start_shot, end_shot) -> str:
@@ -795,6 +970,61 @@ def _motion_preroll_trim_sec() -> float:
         return max(0.0, min(0.5, float(os.getenv("FAL_MOTION_PREROLL_TRIM_SEC", "0.2"))))
     except ValueError:
         return 0.2
+
+
+def _vertical_reel_sources_enabled(config: RenderConfig) -> bool:
+    if not _env_flag("NANO_BANANA_VERTICAL_ENABLED", default=True):
+        return False
+    return _aspect_ratio_text(getattr(config, "aspect_ratio", "")) == "9:16"
+
+
+def _vertical_use_for_reels_enabled() -> bool:
+    return _env_flag("NANO_BANANA_USE_FOR_REELS", default=True)
+
+
+def _vertical_image_concurrency(total: int, fallback: int) -> int:
+    raw = os.getenv("NANO_BANANA_CONCURRENCY", "auto").strip().lower()
+    if raw in {"auto", "all", "images", "image_count", "unlimited"}:
+        return max(1, total)
+    if raw in {"same", "render", "video"}:
+        return max(1, min(total, fallback))
+    try:
+        value = int(raw)
+    except ValueError:
+        return max(1, min(total, fallback))
+    if value <= 0:
+        return max(1, total)
+    return max(1, min(total, value))
+
+
+def _vertical_reframe_intent(storyboard: Storyboard, shot) -> str:
+    brief = storyboard.creative_brief
+    parts = [
+        "Keep the original horizontal listing photo as the visual truth while making it vertical-share ready.",
+        (
+            f"Story theme: {_short_prompt(brief.concept_title, 100)}; "
+            f"{_short_prompt(brief.visual_theme, 160)}"
+            if brief
+            else ""
+        ),
+        f"Scene purpose: {_short_prompt(shot.scene_purpose, 140)}" if getattr(shot, "scene_purpose", None) else "",
+        f"Camera prep: leave clean vertical space for {_short_prompt(shot.style_notes or shot.transition_plan, 160)}"
+        if (getattr(shot, "style_notes", None) or getattr(shot, "transition_plan", None))
+        else "Camera prep: compose for parallax, dolly, pan, and beat-synced cuts without letterbox edges.",
+    ]
+    return _compact_prompt(parts, max_chars=520)
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _aspect_ratio_text(value) -> str:
+    raw = getattr(value, "value", value)
+    return str(raw or "").strip()
 
 
 def _should_generate_flfv_bridge(start_shot, end_shot) -> bool:

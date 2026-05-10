@@ -125,7 +125,8 @@ class StoryboardBuilder:
         ordered_slots = [slot_by_id[slot_id] for slot_id in match.slot_order if slot_id in slot_by_id]
         ordered_slots.extend(slot for slot in template.shot_slots if slot.slot_id not in {s.slot_id for s in ordered_slots})
         ordered_slots = _adapt_slots_to_upload_count(ordered_slots, len(curated_analyzed))
-        ordered_slots = _apply_agent_timing_overrides(ordered_slots, match.style_overrides, beat_timestamps_ms)
+        style_overrides = _diversify_camera_work_for_order(ordered_slots, match.style_overrides)
+        ordered_slots = _apply_agent_timing_overrides(ordered_slots, style_overrides, beat_timestamps_ms)
         await _emit(
             telemetry,
             stage="storyboard",
@@ -165,7 +166,7 @@ class StoryboardBuilder:
 
             timing = timing_by_slot.get(slot.slot_id)
             duration_sec = _clip_duration(timing.duration_sec if timing else slot.duration_sec)
-            override = match.style_overrides.get(slot.slot_id, {})
+            override = style_overrides.get(slot.slot_id, {})
             scene_purpose = str(override.get("scene_purpose") or "").strip()
             beat_plan = str(override.get("beat_plan") or "").strip()
             masking_plan = str(override.get("masking_plan") or "").strip()
@@ -297,7 +298,7 @@ class StoryboardBuilder:
             creative_brief=creative_brief,
             total_duration_sec=total,
             aspect_ratio=template.aspect_ratio,
-            beat_timestamps=[ms / 1000 for ms in (beat_timestamps_ms or [])],
+            beat_timestamps=_storyboard_cut_grid(beat_timestamps_ms, shots),
             generated_slot_ids=[s.slot_id for s in shots if s.is_generated],
             unfilled_slot_ids=list(match.unfilled),
             selected_upload_ids=selected_ids,
@@ -401,7 +402,8 @@ class StoryboardBuilder:
         ordered_slots.extend(
             slot for slot in auto_template.shot_slots if slot.slot_id not in {s.slot_id for s in ordered_slots}
         )
-        ordered_slots = _apply_agent_timing_overrides(ordered_slots, match.style_overrides, beat_timestamps_ms)
+        style_overrides = _diversify_camera_work_for_order(ordered_slots, match.style_overrides)
+        ordered_slots = _apply_agent_timing_overrides(ordered_slots, style_overrides, beat_timestamps_ms)
         ordered_template = auto_template.model_copy(update={"shot_slots": ordered_slots})
         timings = self.scheduler.schedule(
             ordered_template,
@@ -423,7 +425,7 @@ class StoryboardBuilder:
             room_type = analysis.room_type or slot.room_type or "detail"
             timing = timing_by_slot.get(slot.slot_id)
             duration_sec = _clip_duration(timing.duration_sec if timing else slot.duration_sec)
-            override = match.style_overrides.get(slot.slot_id, {})
+            override = style_overrides.get(slot.slot_id, {})
             scene_purpose = str(override.get("scene_purpose") or "").strip()
             beat_plan = str(override.get("beat_plan") or "").strip()
             masking_plan = str(override.get("masking_plan") or "").strip()
@@ -544,7 +546,7 @@ class StoryboardBuilder:
             creative_brief=creative_brief,
             total_duration_sec=total,
             aspect_ratio="9:16",
-            beat_timestamps=[ms / 1000 for ms in (beat_timestamps_ms or [])],
+            beat_timestamps=_storyboard_cut_grid(beat_timestamps_ms, shots),
             generated_slot_ids=[],
             unfilled_slot_ids=list(match.unfilled),
             selected_upload_ids=selected_ids,
@@ -560,10 +562,25 @@ class StoryboardBuilder:
         telemetry: Optional[TelemetryCallback] = None,
     ) -> list[AnalyzedUpload]:
         self.last_analyses_by_upload_id = {}
-        semaphore = asyncio.Semaphore(4)
+        concurrency = _storyboard_analysis_concurrency()
+        semaphore = asyncio.Semaphore(concurrency)
         completed = 0
         total = len(uploads)
         lock = asyncio.Lock()
+
+        if total:
+            await _emit(
+                telemetry,
+                stage="storyboard",
+                message=(
+                    f"Analyzing {total} photo{'s' if total != 1 else ''} with AI vision "
+                    f"at concurrency {concurrency}."
+                ),
+                progress=0.09,
+                detail={
+                    "analysis_concurrency": concurrency,
+                },
+            )
 
         async def analyze_one(item: tuple[str, Path, Optional[ImageAnalysisResult]]) -> AnalyzedUpload:
             nonlocal completed
@@ -574,12 +591,14 @@ class StoryboardBuilder:
             self.last_analyses_by_upload_id[upload_id] = cached
             async with lock:
                 completed += 1
+                source = str(cached.raw.get("source") or "analysis").replace("_", " ")
                 await _emit(
                     telemetry,
                     stage="storyboard",
                     message=(
                         f"Analyzed photo {completed} of {total}: "
-                        f"{cached.room_type.replace('_', ' ')}, {cached.framing}, quality {cached.quality_score:.2f}."
+                        f"{cached.room_type.replace('_', ' ')}, {cached.framing}, quality {cached.quality_score:.2f}"
+                        f" ({source})."
                     ),
                     progress=0.10 + 0.45 * (completed / max(total, 1)),
                     detail={
@@ -587,6 +606,7 @@ class StoryboardBuilder:
                         "total": total,
                         "upload_id": upload_id,
                         "room_type": cached.room_type,
+                        "analysis_source": cached.raw.get("source"),
                     },
                 )
             return AnalyzedUpload(upload_id=upload_id, image_path=str(path), analysis=cached)
@@ -761,6 +781,174 @@ def _apply_agent_timing_overrides(
     return out
 
 
+def _diversify_camera_work_for_order(
+    slots: list[ShotSlot],
+    style_overrides: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Give each ordered scene a distinct camera lane before provider prompting."""
+    if not _env_flag("CAMERA_DIVERSITY_ENABLED", default=True):
+        return style_overrides
+
+    out: dict[str, dict[str, Any]] = {
+        slot_id: dict(override)
+        for slot_id, override in style_overrides.items()
+        if isinstance(override, dict)
+    }
+    recent_families: list[str] = []
+    used_counts: dict[str, int] = {}
+    total = max(1, len(slots))
+
+    for index, slot in enumerate(slots):
+        override = dict(out.get(slot.slot_id, {}))
+        variation = _camera_variation_for_slot(
+            index=index,
+            slot=slot,
+            recent_families=recent_families,
+            used_counts=used_counts,
+            total=total,
+        )
+        family = variation["family"]
+        recent_families.append(family)
+        recent_families = recent_families[-2:]
+        used_counts[family] = used_counts.get(family, 0) + 1
+
+        existing_notes = _clean_prompt_text(override.get("style_notes"), 1900)
+        diversity_line = (
+            f"Camera variation lock: {variation['lead']} "
+            "Cut at the chosen audio beat; do not repeat the previous shot's camera direction."
+        )
+        override["style_notes"] = _clean_prompt_text(
+            f"{diversity_line} {existing_notes}".strip(),
+            2200,
+        )
+        override["motion"] = variation["motion"]
+        current_strength = _clean_float(override.get("motion_strength"), minimum=0.0, maximum=1.0) or 0.0
+        override["motion_strength"] = max(
+            current_strength,
+            float(variation["strength"]),
+        )
+        override["velocity_vector"] = variation["velocity"]
+        override["movement_intensity"] = variation["intensity"]
+        override.setdefault("ramp_profile", variation["ramp_profile"])
+        out[slot.slot_id] = override
+
+    return out
+
+
+def _camera_variation_for_slot(
+    *,
+    index: int,
+    slot: ShotSlot,
+    recent_families: list[str],
+    used_counts: dict[str, int],
+    total: int,
+) -> dict[str, Any]:
+    room = (slot.room_type or "").lower()
+    candidates = list(_CAMERA_VARIATIONS)
+    if index == 0:
+        candidates = [item for item in candidates if item["family"] in {"aerial_drop", "parallax_push", "pull_reveal"}]
+    elif index >= total - 2:
+        candidates = [item for item in candidates if item["family"] in {"pull_reveal", "tilt_up", "lateral_right", "parallax_push"}]
+    elif room in {"exterior", "backyard", "view"}:
+        candidates = [item for item in candidates if item["family"] in {"aerial_drop", "pull_reveal", "lateral_right", "tilt_down", "parallax_push"}]
+    elif room in {"detail", "bathroom"}:
+        candidates = [item for item in candidates if item["family"] in {"micro_orbit", "tilt_up", "lateral_left", "parallax_push"}]
+    elif room in {"kitchen", "living_room", "foyer", "bedroom"}:
+        candidates = [item for item in candidates if item["family"] in {"parallax_push", "lateral_left", "lateral_right", "tilt_up", "pull_reveal"}]
+
+    if not candidates:
+        candidates = list(_CAMERA_VARIATIONS)
+
+    def score(item: dict[str, Any]) -> tuple[int, int, int]:
+        family = item["family"]
+        recent_penalty = 4 if family in recent_families else 0
+        use_penalty = used_counts.get(family, 0)
+        rhythm = abs((index % len(_CAMERA_VARIATIONS)) - _CAMERA_VARIATION_INDEX[family])
+        return (recent_penalty + use_penalty * 2, rhythm, _CAMERA_VARIATION_INDEX[family])
+
+    return min(candidates, key=score)
+
+
+_CAMERA_VARIATIONS: list[dict[str, Any]] = [
+    {
+        "family": "aerial_drop",
+        "motion": MotionPreset.PUSH_IN.value,
+        "strength": 0.66,
+        "ramp_profile": "reveal",
+        "velocity": "elevated_forward_drop_35pct",
+        "intensity": "moderate",
+        "lead": "Begin with an elevated drone-like perspective, then descend/push toward the main entry or hero plane with visible parallax.",
+    },
+    {
+        "family": "parallax_push",
+        "motion": MotionPreset.PUSH_IN.value,
+        "strength": 0.62,
+        "ramp_profile": "reveal",
+        "velocity": "forward_dolly_35pct",
+        "intensity": "moderate",
+        "lead": "Parallax push-in from frame 0, with foreground edges moving faster than the room's stable architecture.",
+    },
+    {
+        "family": "lateral_left",
+        "motion": MotionPreset.PAN_LEFT.value,
+        "strength": 0.58,
+        "ramp_profile": "cruise",
+        "velocity": "lateral_truck_left_30pct",
+        "intensity": "calm",
+        "lead": "Lateral parallax slide left across a wall, window, counter, or furniture edge while the geometry stays stable.",
+    },
+    {
+        "family": "lateral_right",
+        "motion": MotionPreset.PAN_RIGHT.value,
+        "strength": 0.58,
+        "ramp_profile": "cruise",
+        "velocity": "lateral_truck_right_30pct",
+        "intensity": "calm",
+        "lead": "Lateral parallax slide right, letting depth shift sideways before landing cleanly on the beat.",
+    },
+    {
+        "family": "pull_reveal",
+        "motion": MotionPreset.PULL_OUT.value,
+        "strength": 0.56,
+        "ramp_profile": "impact",
+        "velocity": "reverse_dolly_reveal_25pct",
+        "intensity": "calm",
+        "lead": "Pull back from a detail or architectural anchor to reveal more of the room, then hold just long enough to cut.",
+    },
+    {
+        "family": "tilt_up",
+        "motion": MotionPreset.PAN_UP.value,
+        "strength": 0.52,
+        "ramp_profile": "cruise",
+        "velocity": "pedestal_tilt_up_25pct",
+        "intensity": "calm",
+        "lead": "Pedestal or tilt up through vertical lines, emphasizing height, windows, lighting, or ceiling scale.",
+    },
+    {
+        "family": "tilt_down",
+        "motion": MotionPreset.PAN_DOWN.value,
+        "strength": 0.52,
+        "ramp_profile": "cruise",
+        "velocity": "soft_tilt_down_25pct",
+        "intensity": "calm",
+        "lead": "Tilt down from ceiling, sky, or upper architecture toward the lived-in focal plane.",
+    },
+    {
+        "family": "micro_orbit",
+        "motion": MotionPreset.SLOW_ZOOM_IN.value,
+        "strength": 0.50,
+        "ramp_profile": "cruise",
+        "velocity": "subtle_orbit_parallax_20pct",
+        "intensity": "calm",
+        "lead": "Use a subtle orbit-like parallax around a fixed detail, keeping the source geometry grounded and premium.",
+    },
+]
+_CAMERA_VARIATION_INDEX = {
+    item["family"]: index
+    for index, item in enumerate(_CAMERA_VARIATIONS)
+}
+
+
 def _clip_duration(duration_sec: float) -> float:
     return max(_min_clip_duration(), min(float(duration_sec), _max_clip_duration()))
 
@@ -808,6 +996,26 @@ def _average_beat_sec(beat_timestamps_ms: Optional[list[int]]) -> Optional[float
     return intervals[mid]
 
 
+def _storyboard_analysis_concurrency() -> int:
+    try:
+        value = int(os.getenv("STORYBOARD_ANALYSIS_CONCURRENCY", "8"))
+    except ValueError:
+        value = 8
+    return max(1, min(32, value))
+
+
+def _storyboard_cut_grid(beat_timestamps_ms: Optional[list[int]], shots: list[ResolvedShot]) -> list[float]:
+    """Expose both detected beats and chosen shot boundaries to the render snapper."""
+    values = {round(ms / 1000, 6) for ms in (beat_timestamps_ms or []) if ms >= 0}
+    cursor = 0.0
+    values.add(0.0)
+    for shot in shots:
+        values.add(round(cursor, 6))
+        cursor += max(0.0, float(shot.duration_sec))
+        values.add(round(cursor, 6))
+    return sorted(value for value in values if value >= 0.0)
+
+
 def _clean_int(value: Any, minimum: int, maximum: int) -> Optional[int]:
     try:
         return max(minimum, min(maximum, int(round(float(value)))))
@@ -821,6 +1029,13 @@ def _env_float(name: str, default: float, *, minimum: float, maximum: float) -> 
     except ValueError:
         value = default
     return max(minimum, min(maximum, value))
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _clean_prompt_text(value: Any, limit: int) -> str:

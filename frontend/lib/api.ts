@@ -138,11 +138,13 @@ export type Storyboard = {
   notes: string;
 };
 
+export type RenderPassType = "draft" | "final" | "instagram_draft" | "instagram_final";
+
 export type RenderJob = {
   id: string;
   project_id: string;
   storyboard_id: string;
-  pass_type: "draft" | "final";
+  pass_type: RenderPassType;
   status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
   progress: number;
   output_path?: string | null;
@@ -222,7 +224,7 @@ export type WorkflowSnapshotEvent = {
   message?: string;
   progress?: number;
   render_id?: string;
-  pass_type?: "draft" | "final";
+  pass_type?: RenderPassType;
   current?: number;
   total?: number;
   shot_id?: string;
@@ -291,7 +293,7 @@ export const api = {
     }),
 
   // render
-  startRender: (projectId: string, passType: "draft" | "final") =>
+  startRender: (projectId: string, passType: RenderPassType) =>
     request<RenderJob>(`/projects/${projectId}/renders?pass_type=${passType}`, {
       method: "POST",
     }),

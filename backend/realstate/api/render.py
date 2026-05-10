@@ -25,12 +25,19 @@ router = APIRouter(prefix="/projects/{project_id}/renders", tags=["renders"])
 _loader = TemplateLoader()
 _renderer = MultiPassRenderer()
 
+_RENDER_PASS_TYPES = {
+    "draft": {"base_pass": "draft", "aspect_ratio": "16:9", "label": "Horizontal draft"},
+    "final": {"base_pass": "final", "aspect_ratio": "16:9", "label": "Horizontal final"},
+    "instagram_draft": {"base_pass": "draft", "aspect_ratio": "9:16", "label": "Instagram Reel draft"},
+    "instagram_final": {"base_pass": "final", "aspect_ratio": "9:16", "label": "Instagram Reel final"},
+}
+
 
 @router.post("", response_model=RenderJob)
 async def start_render(
     project_id: str,
     background_tasks: BackgroundTasks,
-    pass_type: str = Query("draft", pattern="^(draft|final)$"),
+    pass_type: str = Query("draft", pattern="^(draft|final|instagram_draft|instagram_final)$"),
     db: Session = Depends(get_db),
 ) -> RenderJob:
     project = db.get(ProjectRow, project_id)
@@ -45,17 +52,19 @@ async def start_render(
     if not sb_row:
         raise HTTPException(404, "Storyboard not found")
     storyboard = Storyboard(**sb_row.json)
+    render_spec = _RENDER_PASS_TYPES[pass_type]
 
     template = None if storyboard.template_id == "auto" else _loader.get(storyboard.template_id)
     if storyboard.template_id != "auto" and not template:
         raise HTTPException(404, f"Template {storyboard.template_id} not found")
 
     pf = ProjectFiles()
+    job_id = str(uuid.uuid4())
     out_path = pf.renders_dir(project_id) / f"{pass_type}.mp4"
-    scratch = pf.scratch_dir(project_id)
+    scratch = pf.scratch_dir(project_id) / pass_type / job_id
 
     job = RenderRow(
-        id=str(uuid.uuid4()),
+        id=job_id,
         project_id=project_id,
         storyboard_id=storyboard.storyboard_id,
         pass_type=pass_type,
@@ -67,7 +76,6 @@ async def start_render(
     db.commit()
     db.refresh(job)
 
-    job_id = job.id
     await broadcast_render_progress(
         project_id,
         {
@@ -76,7 +84,7 @@ async def start_render(
             "status": "queued",
             "phase": "queued",
             "progress": 0.0,
-            "message": f"{pass_type.title()} render queued. Preparing the render worker.",
+            "message": f"{render_spec['label']} queued. Preparing the render worker.",
         },
     )
     background_tasks.add_task(
@@ -84,6 +92,8 @@ async def start_render(
         job_id=job_id,
         project_id=project_id,
         pass_type=pass_type,
+        base_pass=render_spec["base_pass"],
+        aspect_ratio=render_spec["aspect_ratio"],
         storyboard=storyboard,
         template_id=storyboard.template_id,
         out_path=out_path,
@@ -128,6 +138,8 @@ async def _run_render(
     job_id: str,
     project_id: str,
     pass_type: str,
+    base_pass: str,
+    aspect_ratio: str,
     storyboard: Storyboard,
     template_id: str,
     out_path: Path,
@@ -160,9 +172,9 @@ async def _run_render(
 
     try:
         gen = (
-            _renderer.draft(storyboard, template, out_path, scratch_dir=scratch)
-            if pass_type == "draft"
-            else _renderer.final(storyboard, template, out_path, scratch_dir=scratch)
+            _renderer.draft(storyboard, template, out_path, scratch_dir=scratch, aspect_ratio=aspect_ratio)
+            if base_pass == "draft"
+            else _renderer.final(storyboard, template, out_path, scratch_dir=scratch, aspect_ratio=aspect_ratio)
         )
 
         last_push = 0.0
@@ -210,7 +222,11 @@ async def _run_render(
                 "progress": 1.0,
                 "status": "succeeded",
                 "phase": "complete",
-                "message": "Render complete. The reel is ready to review.",
+                "message": (
+                    "Instagram Reel complete. The vertical version is ready to review."
+                    if pass_type.startswith("instagram_")
+                    else "Horizontal render complete. The main video is ready to review."
+                ),
                 "output_url": f"/projects/{project_id}/renders/{job_id}/file",
             },
         )

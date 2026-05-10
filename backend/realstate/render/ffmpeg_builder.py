@@ -18,6 +18,7 @@ We avoid `drawtext` (requires libfreetype); text overlays are rendered as PNGs.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -524,6 +525,8 @@ def _timeline_duration(shots: list, fps: int) -> float:
 
 
 def _transition_overlap_sec(prev_shot, next_shot, fps: int) -> float:
+    if _beat_locked_cuts_enabled():
+        return 0.0
     if getattr(prev_shot, "is_transition_bridge", False) or getattr(next_shot, "is_transition_bridge", False):
         return 0.0
     strategy = _intent_strategy(prev_shot)
@@ -536,6 +539,12 @@ def _transition_overlap_sec(prev_shot, next_shot, fps: int) -> float:
     if strategy == "handshake":
         return _quantize_video_time(0.12, fps)
     return 0.0
+
+
+def _beat_locked_cuts_enabled() -> bool:
+    snappy = os.getenv("SNAPPY_BEAT_PACING", "1").strip().lower() not in {"0", "false", "no", "off"}
+    hard_cuts = os.getenv("SNAPPY_BEAT_LOCK_HARD_CUTS", "1").strip().lower() not in {"0", "false", "no", "off"}
+    return snappy and hard_cuts
 
 
 def _xfade_transition(prev_shot, next_shot) -> str:

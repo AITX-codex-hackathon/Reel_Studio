@@ -48,8 +48,14 @@ class FalImageClient:
         previous_key = os.environ.get("FAL_KEY")
         os.environ["FAL_KEY"] = self.api_key or ""
         try:
-            arguments = await self._build_arguments(fal_client, prompt, reference_images, aspect_ratio)
             endpoint = self.edit_model if reference_images else self.model
+            arguments = await self._build_arguments(
+                fal_client,
+                endpoint=endpoint,
+                prompt=prompt,
+                reference_images=reference_images,
+                aspect_ratio=aspect_ratio,
+            )
             result = await asyncio.to_thread(_run_fal, fal_client, endpoint, arguments)
             image_url = _extract_image_url(result)
             if not image_url:
@@ -70,6 +76,7 @@ class FalImageClient:
     async def _build_arguments(
         self,
         fal_client: Any,
+        endpoint: str,
         prompt: str,
         reference_images: Optional[list[Path]],
         aspect_ratio: str,
@@ -81,10 +88,46 @@ class FalImageClient:
             "output_format": "jpeg",
         }
         if reference_images:
-            image_url = await asyncio.to_thread(fal_client.upload_file, str(reference_images[0]))
-            arguments["image_url"] = image_url
-            arguments["strength"] = 0.68
+            image_urls = await asyncio.gather(
+                *(asyncio.to_thread(fal_client.upload_file, str(image)) for image in reference_images)
+            )
+            if _is_nano_banana_endpoint(endpoint):
+                arguments["image_urls"] = image_urls
+                arguments["limit_generations"] = True
+                arguments["safety_tolerance"] = os.getenv("FAL_IMAGE_SAFETY_TOLERANCE", "4")
+            else:
+                arguments["image_url"] = image_urls[0]
+                arguments["strength"] = 0.68
         return arguments
+
+    async def reframe_to_reel(
+        self,
+        source: Path,
+        out_path: Path,
+        *,
+        aspect_ratio: str = "9:16",
+        intent: str = "",
+    ) -> Optional[Path]:
+        """Use fal image editing to create a full-frame vertical real-estate source image."""
+        prompt = " ".join(
+            part
+            for part in [
+                f"Convert this real-estate listing photo into a full-frame {aspect_ratio} Instagram Reels image.",
+                "Fill the entire vertical frame with no black bars, borders, letterboxing, pillarboxing, or blank canvas.",
+                "Preserve the real architecture, layout, materials, lighting mood, and room identity from the source.",
+                "Use natural crop, extension, and perspective-aware outpainting only where needed.",
+                "Keep vertical lines believable and premium, with clean commercial real-estate polish.",
+                "No people, no text, no logos, no watermark, no distorted furniture, no invented rooms.",
+                intent,
+            ]
+            if part
+        )
+        return await self.generate(
+            prompt=prompt,
+            out_path=out_path,
+            reference_images=[source],
+            aspect_ratio=aspect_ratio,
+        )
 
 
 def _run_fal(fal_client: Any, endpoint: str, arguments: dict[str, Any]) -> Any:
@@ -111,3 +154,7 @@ def _extract_image_url(result: Any) -> Optional[str]:
         if isinstance(result.get("url"), str):
             return result["url"]
     return None
+
+
+def _is_nano_banana_endpoint(endpoint: str) -> bool:
+    return "nano-banana" in (endpoint or "").lower()

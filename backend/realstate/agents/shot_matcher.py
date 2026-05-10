@@ -207,6 +207,7 @@ class ShotMatcher:
                 "Every storyboard must have one binding concept that ties all photos into a single big story.",
                 "Each photo must be treated as a scene with narrative purpose, beat timing, masking, and continuity.",
                 "Style notes must tell FAL how to move the camera while preserving the source image geometry.",
+                "Camera work must be diverse across the ordered reel: no repeated safe glide/push-in pattern across adjacent shots.",
                 "Transitions must be motivated by audio, geometry, light, or camera direction; never random.",
             ],
         }
@@ -234,6 +235,11 @@ class ShotMatcher:
             "Each scene needs a short narrative purpose, a motion-first camera path, a beat count, and a clean handoff. "
             "Do not write generic transitions or filler like 'make it cinematic'. Prefer snappy reel timing: strong cuts on beats, "
             "parallax, push-ins, pull-backs, top-view-to-door movement, and camera direction that can continue across adjacent photos.\n\n"
+            "Camera diversity rule: treat the whole reel like a deliberate shot list, not one repeated move. Rotate camera lanes across adjacent scenes: "
+            "aerial/top-down drop, parallax push, lateral truck left/right, pull-back reveal, tilt/pedestal, and subtle orbit/detail moves. "
+            "Do not use the same primary camera verb or direction in back-to-back shots unless the two photos clearly need a continuation. "
+            "When you continue direction, make the next shot evolve it, e.g. drone drop becomes door push, then lateral interior slide, then pull-back reveal. "
+            "Every style_notes field must begin with the primary camera move for that exact scene.\n\n"
             "Style direction must stay calm commercial luxury: smooth, spacious, dramatic, soothing, "
             "editorial, and expensive. Avoid chaotic transitions, hype music-video language, aggressive "
             "camera moves, trap/hip-hop cues, nightclub impact hits, and fake architecture. Use the "
@@ -274,7 +280,7 @@ class ShotMatcher:
             '      "transition_in": "one allowed transition",\n'
             '      "color_grade": "warm_cinematic | cool_modern | warm_lifestyle | null",\n'
             '      "scene_purpose": "the narrative job of this scene inside the binding concept",\n'
-            '      "style_notes": "1-2 compact motion-first sentences; start with parallax/push/pull/pan/top-view/dolly direction",\n'
+            '      "style_notes": "1-2 compact motion-first sentences; start with this scene\'s distinct camera lane: aerial drop, parallax push, lateral truck, pull-back reveal, tilt/pedestal, or subtle orbit",\n'
             '      "duration_beats": 4,\n'
             '      "beat_plan": "which beat this shot enters/exits on and why the cut should feel snappy",\n'
             '      "masking_plan": "source-safe holdouts and safe animated regions",\n'

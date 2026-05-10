@@ -16,6 +16,7 @@ import {
   type ProjectMusic,
   type Project,
   type RenderJob,
+  type RenderPassType,
   type Storyboard,
   type Upload,
   type WorkflowSnapshotEvent,
@@ -152,13 +153,41 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (storyboard && storyboardDirty) {
         await onSaveStoryboard(storyboard);
       }
-      pushLocalEvent("render", `${passType === "draft" ? "Draft" : "Final"} render queued.`);
-      const job = await api.startRender(projectId, passType);
-      setRenders((rs) => [job, ...rs]);
+      pushLocalEvent("render", `${passType === "draft" ? "Horizontal draft" : "Horizontal final"} queued.`);
+      const horizontalJob = await api.startRender(projectId, passType);
+      setRenders((rs) => [horizontalJob, ...rs]);
       setStep("render");
+      if (passType === "final") {
+        try {
+          pushLocalEvent("render", "Instagram Reel queued in the background.");
+          const instagramJob = await api.startRender(projectId, "instagram_final");
+          setRenders((rs) => [instagramJob, ...rs]);
+        } catch (error) {
+          pushLocalEvent(
+            "render",
+            `Instagram Reel failed to queue: ${error instanceof Error ? error.message : error}`,
+            "failed",
+          );
+        }
+      }
     } catch (e) {
       pushLocalEvent("render", `Render failed to start: ${e instanceof Error ? e.message : e}`, "failed");
       alert(`Render failed to start: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+
+  const onInstagramRender = async () => {
+    try {
+      if (storyboard && storyboardDirty) {
+        await onSaveStoryboard(storyboard);
+      }
+      pushLocalEvent("render", "Instagram Reel queued.");
+      const job = await api.startRender(projectId, "instagram_final");
+      setRenders((rs) => [job, ...rs]);
+      setStep("render");
+    } catch (e) {
+      pushLocalEvent("render", `Instagram Reel failed to start: ${e instanceof Error ? e.message : e}`, "failed");
+      alert(`Instagram Reel failed to start: ${e instanceof Error ? e.message : e}`);
     }
   };
 
@@ -209,6 +238,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       </div>
     );
   }
+
+  const horizontalRenders = renders.filter((render) => !isInstagramPass(render.pass_type));
+  const instagramRenders = renders.filter((render) => isInstagramPass(render.pass_type));
 
   return (
     <div className="space-y-8">
@@ -361,7 +393,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           <CardHeader>
             <CardTitle>Renders</CardTitle>
             <CardDescription>
-              Drafts are 540p with a watermark. Finals are 1080p, ready for Instagram.
+              Horizontal renders appear first. Instagram Reel renders continue in the background and open in their own vertical preview.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -370,27 +402,85 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 <Sparkles className="w-4 h-4" /> New draft
               </Button>
               <Button onClick={() => onRender("final")}>New final render</Button>
+              <Button variant="outline" onClick={onInstagramRender}>New Instagram Reel</Button>
             </div>
             {renders.length === 0 ? (
               <p className="text-sm text-ink-muted">No renders yet — start one above.</p>
             ) : (
-              <div className="space-y-3">
-                {renders.map((r) => (
-                  <RenderProgressCard
-                    key={r.id}
-                    projectId={projectId}
-                    job={r}
-                    liveProgress={liveProgress[r.id]}
-                    liveMessage={renderMessages[r.id]}
-                    livePhase={renderPhases[r.id]}
-                  />
-                ))}
+              <div className="space-y-6">
+                <RenderGroup
+                  title="Horizontal Video"
+                  description="Main 16:9 render shown as soon as it finishes."
+                  projectId={projectId}
+                  renders={horizontalRenders}
+                  liveProgress={liveProgress}
+                  renderMessages={renderMessages}
+                  renderPhases={renderPhases}
+                />
+                <RenderGroup
+                  title="Instagram Reel"
+                  description="Separate 9:16 vertical version; it can keep processing while you review the horizontal video."
+                  projectId={projectId}
+                  renders={instagramRenders}
+                  liveProgress={liveProgress}
+                  renderMessages={renderMessages}
+                  renderPhases={renderPhases}
+                />
               </div>
             )}
           </CardContent>
         </Card>
       )}
     </div>
+  );
+}
+
+function isInstagramPass(passType: RenderPassType) {
+  return passType.startsWith("instagram_");
+}
+
+function RenderGroup({
+  title,
+  description,
+  projectId,
+  renders,
+  liveProgress,
+  renderMessages,
+  renderPhases,
+}: {
+  title: string;
+  description: string;
+  projectId: string;
+  renders: RenderJob[];
+  liveProgress: Record<string, number>;
+  renderMessages: Record<string, string>;
+  renderPhases: Record<string, string>;
+}) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold text-ink">{title}</h3>
+        <p className="text-xs text-ink-subtle">{description}</p>
+      </div>
+      {renders.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border/70 px-4 py-5 text-sm text-ink-muted">
+          No {title.toLowerCase()} yet.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {renders.map((render) => (
+            <RenderProgressCard
+              key={render.id}
+              projectId={projectId}
+              job={render}
+              liveProgress={liveProgress[render.id]}
+              liveMessage={renderMessages[render.id]}
+              livePhase={renderPhases[render.id]}
+            />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

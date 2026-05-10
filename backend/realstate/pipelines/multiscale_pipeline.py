@@ -35,11 +35,13 @@ class MultiPassRenderer:
         template: Optional[Template],
         output_path: Path,
         scratch_dir: Optional[Path] = None,
+        aspect_ratio: Optional[str] = None,
     ) -> AsyncIterator[RenderProgress]:
         config = self._config_for_pass(
             storyboard=storyboard,
             template=template,
             pass_type=RenderPass.DRAFT,
+            aspect_ratio=aspect_ratio,
         )
         async for p in self.pipeline.render(
             storyboard=storyboard,
@@ -56,11 +58,13 @@ class MultiPassRenderer:
         template: Optional[Template],
         output_path: Path,
         scratch_dir: Optional[Path] = None,
+        aspect_ratio: Optional[str] = None,
     ) -> AsyncIterator[RenderProgress]:
         config = self._config_for_pass(
             storyboard=storyboard,
             template=template,
             pass_type=RenderPass.FINAL,
+            aspect_ratio=aspect_ratio,
         )
         async for p in self.pipeline.render(
             storyboard=storyboard,
@@ -76,9 +80,10 @@ class MultiPassRenderer:
         storyboard: Storyboard,
         template: Optional[Template],
         pass_type: RenderPass,
+        aspect_ratio: Optional[str] = None,
     ) -> RenderConfig:
         # Pick aspect ratio from storyboard (same in both passes)
-        ar_str = storyboard.aspect_ratio
+        ar_str = aspect_ratio or storyboard.aspect_ratio
         ar = {"9:16": AspectRatio.REEL_9_16, "1:1": AspectRatio.SQUARE_1_1, "16:9": AspectRatio.WIDE_16_9}.get(ar_str, AspectRatio.REEL_9_16)
 
         if pass_type == RenderPass.DRAFT:

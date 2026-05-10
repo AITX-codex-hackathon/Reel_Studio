@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -49,7 +50,9 @@ async def generate_storyboard(
     for u in upload_rows:
         a = db.query(AnalysisRow).filter_by(upload_id=u.id).first()
         cached = None
-        if a and dict(a.raw or {}).get("analyzer_version") == ANALYZER_VERSION:
+        raw = dict(a.raw or {}) if a else {}
+        cached_is_ai = raw.get("source") == "openai_vision"
+        if a and raw.get("analyzer_version") == ANALYZER_VERSION and (cached_is_ai or not _require_ai_analysis()):
             cached = ImageAnalysisResult(
                 room_type=a.room_type,
                 quality_score=a.quality_score,
@@ -58,7 +61,7 @@ async def generate_storyboard(
                 dominant_colors=list(a.dominant_colors or []),
                 suggested_motion=a.suggested_motion,
                 notes=a.notes,
-                raw=dict(a.raw or {}),
+                raw=raw,
             )
         uploads.append((u.id, Path(u.path), cached))
 
@@ -201,6 +204,10 @@ def _selected_music(project_id: str, db: Session) -> tuple[Optional[StoryboardMu
         ),
         beat_timestamps,
     )
+
+
+def _require_ai_analysis() -> bool:
+    return os.getenv("REQUIRE_AI_IMAGE_ANALYSIS", "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
 @router.get("", response_model=Optional[Storyboard])

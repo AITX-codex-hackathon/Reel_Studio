@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -135,13 +136,19 @@ class ImageAnalyzer:
 
     async def analyze(self, image_path: Path) -> ImageAnalysisResult:
         fallback = self._heuristic(image_path)
+        require_ai = _require_ai_analysis()
         if self.llm.enabled:
             try:
                 return await self._analyze_with_llm(image_path, fallback=fallback)
             except OpenAIUnavailable:
-                pass
+                if require_ai:
+                    raise
             except Exception as error:
+                if require_ai:
+                    raise
                 log.warning("Vision analysis failed, falling back: %s", error)
+        elif require_ai:
+            raise OpenAIUnavailable("AI image analysis is required but OpenAI is not configured.")
         return fallback
 
     async def _analyze_with_llm(self, image_path: Path, fallback: ImageAnalysisResult) -> ImageAnalysisResult:
@@ -501,6 +508,10 @@ def _coerce_float(value: Any, default: float) -> float:
 
 def _clamp_float(value: float, low: float, high: float) -> float:
     return max(low, min(high, float(value)))
+
+
+def _require_ai_analysis() -> bool:
+    return os.getenv("REQUIRE_AI_IMAGE_ANALYSIS", "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _tokenize_name(image_path: Path) -> str:
