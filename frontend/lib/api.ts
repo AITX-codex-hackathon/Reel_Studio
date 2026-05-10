@@ -239,10 +239,10 @@ export const api = {
   uploadFileUrl: (uploadId: string) => `${BASE}/uploads/${uploadId}/file`,
 
   // storyboard
-  generateStoryboard: (projectId: string, templateId: string) =>
+  generateStoryboard: (projectId: string) =>
     request<Storyboard>(`/projects/${projectId}/storyboard`, {
       method: "POST",
-      body: JSON.stringify({ template_id: templateId, use_audio_for_pacing: false }),
+      body: JSON.stringify({ use_audio_for_pacing: false }),
     }),
   getStoryboard: (projectId: string) =>
     request<Storyboard | null>(`/projects/${projectId}/storyboard`),

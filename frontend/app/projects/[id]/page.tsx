@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { RenderProgressCard } from "@/components/render-progress";
 import { StoryboardTimeline } from "@/components/storyboard-timeline";
-import { TemplateCard } from "@/components/template-card";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import { MusicBrowser } from "@/components/music-browser";
 import {
@@ -18,27 +17,24 @@ import {
   type Project,
   type RenderJob,
   type Storyboard,
-  type Template,
   type Upload,
   type WorkflowSnapshotEvent,
 } from "@/lib/api";
 import { connectProgressWS, type WorkflowMessage } from "@/lib/ws";
 import { cn } from "@/lib/utils";
 
-type Step = "upload" | "template" | "music" | "storyboard" | "render";
+type Step = "upload" | "music" | "storyboard" | "render";
 type WorkflowEvent = WorkflowMessage & { id: string; at: number };
 
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = use(params);
   const [project, setProject] = useState<Project | null>(null);
   const [uploads, setUploads] = useState<Upload[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
   const [storyboard, setStoryboard] = useState<Storyboard | null>(null);
   const [renders, setRenders] = useState<RenderJob[]>([]);
   const [currentMusic, setCurrentMusic] = useState<ProjectMusic | null>(null);
   const [step, setStep] = useState<Step>("upload");
 
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [generatingStoryboard, setGeneratingStoryboard] = useState(false);
 
   const [liveProgress, setLiveProgress] = useState<Record<string, number>>({});
@@ -51,24 +47,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     Promise.all([
       api.getProject(projectId),
       api.listUploads(projectId),
-      api.listTemplates(),
       api.getStoryboard(projectId),
       api.listRenders(projectId),
       api.getCurrentMusic(projectId),
-    ]).then(([p, u, t, s, r, m]) => {
+    ]).then(([p, u, s, r, m]) => {
       setProject(p);
       setUploads(u);
-      setTemplates(t);
       if (s) setStoryboard(s);
       setRenders(r);
       setCurrentMusic(m);
-      setSelectedTemplate(p.template_id ?? null);
       // pick the most advanced step
       if (r.length) setStep("render");
       else if (s) setStep("storyboard");
       else if (m) setStep("music");
-      else if (p.template_id) setStep("template");
-      else if (u.length) setStep("template");
+      else if (u.length) setStep("music");
     });
   }, [projectId]);
 
@@ -128,11 +120,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }, [projectId]);
 
   const onGenerateStoryboard = async () => {
-    if (!selectedTemplate) return;
     setGeneratingStoryboard(true);
     pushLocalEvent("storyboard", "Analyzing photos...");
     try {
-      const sb = await api.generateStoryboard(projectId, selectedTemplate);
+      const sb = await api.generateStoryboard(projectId);
       setStoryboard(sb);
       setStep("storyboard");
     } catch (e) {
@@ -216,7 +207,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         step={step}
         onSelect={setStep}
         hasUploads={uploads.length > 0}
-        hasTemplate={!!selectedTemplate}
         hasMusic={!!currentMusic}
         hasStoryboard={!!storyboard}
       />
@@ -242,46 +232,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           </CardContent>
           <div className="flex justify-end p-6 border-t border-border/40">
             <Button
-              onClick={() => setStep("template")}
-              disabled={uploads.length === 0}
-            >
-              Continue <ArrowRight className="w-4 h-4" />
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {step === "template" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Pick a template</CardTitle>
-            <CardDescription>
-              Each template is a parameterized storyboard authored by a pro video editor.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {templates.length === 0 ? (
-              <div className="skeleton h-40" />
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {templates.map((t) => (
-                  <TemplateCard
-                    key={t.template_id}
-                    template={t}
-                    selected={selectedTemplate === t.template_id}
-                    onSelect={() => setSelectedTemplate(t.template_id)}
-                  />
-                ))}
-              </div>
-            )}
-          </CardContent>
-          <div className="flex justify-between gap-3 p-6 border-t border-border/40">
-            <Button variant="ghost" onClick={() => setStep("upload")}>
-              ← Back
-            </Button>
-            <Button
               onClick={() => setStep("music")}
-              disabled={!selectedTemplate}
+              disabled={uploads.length === 0}
             >
               Choose music <ArrowRight className="w-4 h-4" />
             </Button>
@@ -305,12 +257,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             />
           </CardContent>
           <div className="flex justify-between gap-3 p-6 border-t border-border/40">
-            <Button variant="ghost" onClick={() => setStep("template")}>
+            <Button variant="ghost" onClick={() => setStep("upload")}>
               ← Back
             </Button>
             <Button
               onClick={onGenerateStoryboard}
-              disabled={!selectedTemplate || !currentMusic || generatingStoryboard}
+              disabled={!currentMusic || generatingStoryboard}
             >
               {generatingStoryboard ? (
                 <>
@@ -341,17 +293,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               variant="secondary"
               size="sm"
               onClick={onGenerateStoryboard}
-              disabled={generatingStoryboard}
+              disabled={generatingStoryboard || uploads.length === 0}
             >
               {generatingStoryboard ? "…" : "Regenerate"}
             </Button>
           </CardHeader>
           <CardContent>
-            <StoryboardTimeline storyboard={storyboard} uploads={uploads} />
+            <StoryboardTimeline storyboard={storyboard} uploads={uploads} onUpdate={setStoryboard} />
           </CardContent>
           <div className="flex justify-between gap-3 p-6 border-t border-border/40">
-            <Button variant="ghost" onClick={() => setStep("template")}>
-              ← Change template
+            <Button variant="ghost" onClick={() => setStep("music")}>
+              ← Back to music
             </Button>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => onRender("draft")}>
@@ -416,20 +368,17 @@ function Stepper({
   step,
   onSelect,
   hasUploads,
-  hasTemplate,
   hasMusic,
   hasStoryboard,
 }: {
   step: Step;
   onSelect: (s: Step) => void;
   hasUploads: boolean;
-  hasTemplate: boolean;
   hasMusic: boolean;
   hasStoryboard: boolean;
 }) {
   const items: { step: Step; label: string; done: boolean }[] = [
     { step: "upload", label: "Upload", done: hasUploads },
-    { step: "template", label: "Template", done: hasTemplate },
     { step: "music", label: "Music", done: hasMusic },
     { step: "storyboard", label: "Storyboard", done: hasStoryboard },
     { step: "render", label: "Render", done: false },
@@ -441,9 +390,8 @@ function Stepper({
         const isUnlocked =
           i === 0 ||
           (i === 1 && hasUploads) ||
-          (i === 2 && hasTemplate) ||
-          (i === 3 && (hasStoryboard || (hasTemplate && hasMusic))) ||
-          (i === 4 && hasStoryboard);
+          (i === 2 && hasMusic) ||
+          (i === 3 && hasStoryboard);
         return (
           <button
             key={it.step}
