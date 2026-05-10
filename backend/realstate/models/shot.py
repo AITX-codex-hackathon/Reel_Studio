@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -76,6 +76,30 @@ class Shot(BaseModel):
     style_notes: Optional[str] = Field(
         None,
         description="Editor-agent direction for camera, mood, transitions, and story intent.",
+    )
+    scene_purpose: Optional[str] = Field(
+        None,
+        description="Narrative purpose of this scene inside the reel's binding concept.",
+    )
+    beat_plan: Optional[str] = Field(
+        None,
+        description="Beat-level timing and cut intention for this shot.",
+    )
+    masking_plan: Optional[str] = Field(
+        None,
+        description="Source-safe mask and holdout plan for image-to-video generation.",
+    )
+    transition_plan: Optional[str] = Field(
+        None,
+        description="Motivated transition logic into or out of this shot.",
+    )
+    continuity_notes: Optional[str] = Field(
+        None,
+        description="Scene continuity notes for light, geometry, camera direction, and visual grammar.",
+    )
+    rubric_plan: Optional[dict[str, Any]] = Field(
+        None,
+        description="Rubric.json scene plan: narrative, audio sync, optics, kinetic path, masking, transitions, and FAL prompt.",
     )
     style_recipe_prompt: Optional[str] = Field(
         None,

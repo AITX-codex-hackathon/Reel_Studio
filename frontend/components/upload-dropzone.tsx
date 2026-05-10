@@ -35,9 +35,14 @@ export function UploadDropzone({ projectId, uploads, onChange }: Props) {
           all.push(...result);
           setProgress(Math.min(1, (i + chunk.length) / files.length));
         }
+        const canonical = await api.listUploads(projectId);
         // Dedup by id
         const seen = new Set<string>();
-        onChange(all.filter((u) => (seen.has(u.id) ? false : (seen.add(u.id), true))));
+        const merged = [...canonical, ...all].filter((u) => (seen.has(u.id) ? false : (seen.add(u.id), true)));
+        if (merged.length === 0) {
+          throw new Error("No readable images were uploaded. Try JPG, PNG, WebP, or HEIC again.");
+        }
+        onChange(merged);
       } catch (e) {
         alert(`Upload failed: ${e instanceof Error ? e.message : e}`);
       } finally {

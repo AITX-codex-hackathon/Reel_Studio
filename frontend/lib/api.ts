@@ -79,10 +79,30 @@ export type ResolvedShot = {
   motion: string;
   motion_strength: number;
   transition_in: string;
+  color_grade?: string | null;
   text_overlay_id?: string | null;
   rendered_text_overlay?: string | null;
   is_generated: boolean;
   source_upload_id?: string | null;
+  room_type?: string | null;
+  style_recipe_id?: string | null;
+  scene_purpose?: string | null;
+  style_notes?: string | null;
+  beat_plan?: string | null;
+  masking_plan?: string | null;
+  transition_plan?: string | null;
+  continuity_notes?: string | null;
+  rubric_plan?: Record<string, unknown> | null;
+  style_recipe_prompt?: string | null;
+};
+
+export type StoryboardCreativeBrief = {
+  concept_title: string;
+  logline: string;
+  visual_theme: string;
+  emotional_arc: string;
+  music_strategy: string;
+  continuity_rules: string[];
 };
 
 export type Storyboard = {
@@ -93,10 +113,14 @@ export type Storyboard = {
   audio_cues: Template["audio_cues"];
   text_overlays: Template["text_overlays"];
   music?: ProjectMusic | null;
+  creative_brief?: StoryboardCreativeBrief | null;
   total_duration_sec: number;
   aspect_ratio: string;
   generated_slot_ids: string[];
   unfilled_slot_ids: string[];
+  selected_upload_ids?: string[];
+  rejected_upload_ids?: string[];
+  photo_selection_notes?: string;
   notes: string;
 };
 

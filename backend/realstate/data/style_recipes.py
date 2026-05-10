@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import csv
-import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -111,15 +110,15 @@ def by_category(category: str) -> list[StyleRecipe]:
     return [r for r in _load_all() if r.category == category]
 
 
-def get_for_room(room_type: Optional[str], seed: Optional[int] = None) -> Optional[StyleRecipe]:
+def get_for_room(room_type: Optional[str], seed: Optional[int] = None, intent: str = "") -> Optional[StyleRecipe]:
     category = ROOM_TO_CATEGORY.get(room_type or "", _DEFAULT_CATEGORY)
     pool = by_category(category) or _load_all()
     if not pool:
         return None
-    return random.Random(seed).choice(pool)
+    return _deterministic_pick(pool, intent=intent, ordinal=seed)
 
 
-def get_cinematic_for_room(room_type: Optional[str], seed: Optional[int] = None) -> Optional[StyleRecipe]:
+def get_cinematic_for_room(room_type: Optional[str], seed: Optional[int] = None, intent: str = "") -> Optional[StyleRecipe]:
     """Pick a calm commercial recipe, avoiding hype/action-heavy camera language."""
     category = ROOM_TO_CATEGORY.get(room_type or "", _DEFAULT_CATEGORY)
     pool = by_category(category) or _load_all()
@@ -129,7 +128,7 @@ def get_cinematic_for_room(room_type: Optional[str], seed: Optional[int] = None)
     filtered = [recipe for recipe in pool if not _has_any(recipe, _AVOID_STYLE_TERMS)]
     preferred = [recipe for recipe in filtered if _has_any(recipe, _PREFERRED_STYLE_TERMS)]
     final_pool = preferred or filtered or pool
-    return random.Random(seed).choice(final_pool)
+    return _deterministic_pick(final_pool, intent=intent, ordinal=seed)
 
 
 def get_by_id(style_id: str) -> Optional[StyleRecipe]:
@@ -147,3 +146,55 @@ def _has_any(recipe: StyleRecipe, terms: tuple[str, ...]) -> bool:
         ]
     ).lower()
     return any(term in text for term in terms)
+
+
+def _deterministic_pick(pool: list[StyleRecipe], *, intent: str = "", ordinal: Optional[int] = None) -> StyleRecipe:
+    """Select a recipe by explainable scoring, not randomness."""
+    intent_terms = _intent_terms(intent)
+    scored: list[tuple[int, str, StyleRecipe]] = []
+    for recipe in pool:
+        text = _recipe_text(recipe)
+        score = 0
+        score += 8 * sum(1 for term in _PREFERRED_STYLE_TERMS if term in text)
+        score -= 20 * sum(1 for term in _AVOID_STYLE_TERMS if term in text)
+        score += 5 * sum(1 for term in intent_terms if term in text)
+        if any(term in intent_terms for term in ("detail", "material", "fixture", "texture", "close")):
+            if "macro" in text or "detail" in text:
+                score += 20
+        if any(term in intent_terms for term in ("exterior", "arrival", "facade", "view", "backyard", "closing")):
+            if any(term in text for term in ("establishing", "golden", "twilight", "aerial", "sunset")):
+                score += 18
+        if any(term in intent_terms for term in ("interior", "living", "kitchen", "foyer", "bedroom", "dining")):
+            if any(term in text for term in ("dolly", "smooth", "architectural", "symmetrical")):
+                score += 18
+        if ordinal is not None:
+            score += max(0, 6 - abs((ordinal % 6) - (_numeric_style_id(recipe.style_id) % 6)))
+        scored.append((score, recipe.style_id, recipe))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return scored[0][2]
+
+
+def _recipe_text(recipe: StyleRecipe) -> str:
+    return " ".join(
+        [
+            recipe.style_id,
+            recipe.category,
+            recipe.mood,
+            recipe.camera_motion,
+            recipe.environmental_dynamics,
+            recipe.video_prompt,
+        ]
+    ).lower()
+
+
+def _intent_terms(intent: str) -> set[str]:
+    return {
+        token
+        for token in intent.lower().replace("_", " ").replace("-", " ").split()
+        if len(token) > 3
+    }
+
+
+def _numeric_style_id(style_id: str) -> int:
+    digits = "".join(char for char in style_id if char.isdigit())
+    return int(digits or "0")

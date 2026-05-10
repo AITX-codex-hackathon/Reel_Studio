@@ -29,6 +29,15 @@ class StoryboardMusic(BaseModel):
     attribution: str
 
 
+class StoryboardCreativeBrief(BaseModel):
+    concept_title: str = ""
+    logline: str = ""
+    visual_theme: str = ""
+    emotional_arc: str = ""
+    music_strategy: str = ""
+    continuity_rules: list[str] = Field(default_factory=list)
+
+
 class Storyboard(BaseModel):
     storyboard_id: str
     project_id: str
@@ -38,6 +47,7 @@ class Storyboard(BaseModel):
     audio_cues: list[AudioCue]
     text_overlays: list[TextOverlaySpec]
     music: Optional[StoryboardMusic] = None
+    creative_brief: Optional[StoryboardCreativeBrief] = None
 
     total_duration_sec: float = Field(..., gt=0)
     aspect_ratio: str
@@ -50,6 +60,9 @@ class Storyboard(BaseModel):
 
     generated_slot_ids: list[str] = Field(default_factory=list)
     unfilled_slot_ids: list[str] = Field(default_factory=list)
+    selected_upload_ids: list[str] = Field(default_factory=list)
+    rejected_upload_ids: list[str] = Field(default_factory=list)
+    photo_selection_notes: str = ""
     notes: str = ""
 
     @property

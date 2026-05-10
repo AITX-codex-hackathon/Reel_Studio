@@ -36,6 +36,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [step, setStep] = useState<Step>("upload");
 
   const [generatingStoryboard, setGeneratingStoryboard] = useState(false);
+  const [storyboardDirty, setStoryboardDirty] = useState(false);
+  const [savingStoryboard, setSavingStoryboard] = useState(false);
 
   const [liveProgress, setLiveProgress] = useState<Record<string, number>>({});
   const [renderMessages, setRenderMessages] = useState<Record<string, string>>({});
@@ -52,8 +54,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       api.getCurrentMusic(projectId),
     ]).then(([p, u, s, r, m]) => {
       setProject(p);
-      setUploads(u);
+      setUploads((current) => (
+        current.length > 0 && u.length === 0 ? current : mergeUploads(current, u)
+      ));
       if (s) setStoryboard(s);
+      if (s) setStoryboardDirty(false);
       setRenders(r);
       setCurrentMusic(m);
       // pick the most advanced step
@@ -125,12 +130,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     try {
       const sb = await api.generateStoryboard(projectId);
       setStoryboard(sb);
+      setStoryboardDirty(false);
       setStep("storyboard");
     } catch (e) {
       pushLocalEvent("storyboard", `Storyboard failed: ${e instanceof Error ? e.message : e}`, "failed");
       const savedStoryboard = await api.getStoryboard(projectId).catch(() => null);
       if (savedStoryboard) {
         setStoryboard(savedStoryboard);
+        setStoryboardDirty(false);
         setStep("storyboard");
         return;
       }
@@ -142,6 +149,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const onRender = async (passType: "draft" | "final") => {
     try {
+      if (storyboard && storyboardDirty) {
+        await onSaveStoryboard(storyboard);
+      }
       pushLocalEvent("render", `${passType === "draft" ? "Draft" : "Final"} render queued.`);
       const job = await api.startRender(projectId, passType);
       setRenders((rs) => [job, ...rs]);
@@ -149,6 +159,27 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     } catch (e) {
       pushLocalEvent("render", `Render failed to start: ${e instanceof Error ? e.message : e}`, "failed");
       alert(`Render failed to start: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+
+  const onStoryboardChange = (next: Storyboard) => {
+    setStoryboard(next);
+    setStoryboardDirty(true);
+  };
+
+  const onSaveStoryboard = async (storyboardToSave = storyboard) => {
+    if (!storyboardToSave) return;
+    setSavingStoryboard(true);
+    try {
+      const saved = await api.saveStoryboard(projectId, storyboardToSave);
+      setStoryboard(saved);
+      setStoryboardDirty(false);
+      pushLocalEvent("storyboard", "Storyboard edits saved.", "succeeded");
+    } catch (e) {
+      pushLocalEvent("storyboard", `Storyboard save failed: ${e instanceof Error ? e.message : e}`, "failed");
+      throw e;
+    } finally {
+      setSavingStoryboard(false);
     }
   };
 
@@ -286,7 +317,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             <div>
               <CardTitle>Storyboard</CardTitle>
               <CardDescription>
-                Auto-assigned shots, ready to render. Run a draft preview first to validate timing.
+                Reorder the horizontal sequence, inspect the AI prompts, and edit any scene that needs a different style, transition, or camera direction.
               </CardDescription>
             </div>
             <Button
@@ -299,17 +330,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             </Button>
           </CardHeader>
           <CardContent>
-            <StoryboardTimeline storyboard={storyboard} uploads={uploads} onUpdate={setStoryboard} />
+            <StoryboardTimeline
+              storyboard={storyboard}
+              uploads={uploads}
+              editable
+              dirty={storyboardDirty}
+              saving={savingStoryboard}
+              onChange={onStoryboardChange}
+              onSave={onSaveStoryboard}
+            />
           </CardContent>
           <div className="flex justify-between gap-3 p-6 border-t border-border/40">
             <Button variant="ghost" onClick={() => setStep("music")}>
               ← Back to music
             </Button>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => onRender("draft")}>
+              <Button variant="outline" onClick={() => onRender("draft")} disabled={savingStoryboard}>
                 <Sparkles className="w-4 h-4" /> Render draft
               </Button>
-              <Button onClick={() => onRender("final")}>
+              <Button onClick={() => onRender("final")} disabled={savingStoryboard}>
                 Render final <ArrowRight className="w-4 h-4" />
               </Button>
             </div>
@@ -362,6 +401,13 @@ function toWorkflowEvent(message: WorkflowMessage | WorkflowSnapshotEvent): Work
     id: `${createdAt}-${message.render_id || message.stage || message.phase || "workflow"}-${Math.random()}`,
     at: createdAt,
   };
+}
+
+function mergeUploads(current: Upload[], incoming: Upload[]) {
+  const byId = new Map<string, Upload>();
+  for (const upload of current) byId.set(upload.id, upload);
+  for (const upload of incoming) byId.set(upload.id, upload);
+  return Array.from(byId.values());
 }
 
 function Stepper({

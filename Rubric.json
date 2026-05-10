@@ -1,0 +1,28 @@
+{
+  "SCENE_ID": "01",
+  "NARRATIVE_THESIS": "Why this scene? What emotional response does it trigger? How does it serve the 5-shot arc?",
+  "TEMPORAL_AUDIO_SYNC": {
+    "DURATION_MS": "Exact duration (e.g., 4500ms)",
+    "AUDIO_BEAT_MAP": "Where the kicks/snares/swells hit (e.g., Bass swell 0ms-1200ms, hard snare at 3100ms)",
+    "CUT_REACTION": "How the visual movement reacts to the audio beat (e.g., speed ramps up 20% exactly on the 3100ms snare)"
+  },
+  "OPTICS_AND_RIGGING": {
+    "LENS_MM": "Focal length (e.g., 14mm ultrawide, 85mm portrait)",
+    "APERTURE": "Depth of field indicator (e.g., f/2.8 shallow, f/8 deep)",
+    "CAMERA_POSITION": "Physical placement relative to subject (e.g., low-angle, waist-level, top-down)"
+  },
+  "KINETIC_PATHWAY": {
+    "PRIMARY_MOVEMENT": "Pan, Tilt, Dolly, Truck, Pedestal, or Roll",
+    "PARALLAX_TARGET": "The foreground/background relationship to establish 3D depth",
+    "EASING_CURVE": "Linear, Ease-In, Ease-Out, or Bezier pathing"
+  },
+  "PRESERVATION_AND_MASKING": {
+    "STRICT_ZONES": "Specific architectural geometries in the source photo that MUST NOT hallucinate or warp",
+    "ALLOWED_FLEXIBILITY": "Areas where the model can invent (e.g., sky, foliage, water ripples)"
+  },
+  "SEAMLESS_TRANSITION_ARCHITECTURE": {
+    "INGRESS_SEAM": "How this scene receives the momentum from the previous scene",
+    "EGRESS_SEAM": "How this scene sets up the exact visual vector for the next scene"
+  },
+  "FAL_GENERATION_PROMPT": "The final 1800+ character string passed to the video model, compiling all the above into natural language."
+}

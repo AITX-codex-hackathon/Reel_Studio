@@ -37,7 +37,7 @@ export default function DashboardPage() {
           </h1>
           <p className="mt-4 text-lg text-ink-muted leading-relaxed">
             Upload your property photos, choose music, and our AI agents storyboard, arrange,
-            and render a beat-aware cinematic reel ready for Instagram.
+            prompt, and render beat-aware FAL image-to-video shots ready for Instagram.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg">

@@ -11,6 +11,7 @@ log = logging.getLogger(__name__)
 
 _I2V_MODEL = "fal-ai/kling-video/v1.6/standard/image-to-video"
 _T2V_MODEL = "fal-ai/kling-video/v1.6/standard/text-to-video"
+_MAX_PROMPT_CHARS = 2400
 
 
 class FalClient:
@@ -53,6 +54,7 @@ class FalClient:
             data_url = f"data:image/{ext};base64,{base64.b64encode(f.read()).decode()}"
 
         try:
+            prompt = _limit_prompt(prompt)
             result = await fal_client.run_async(
                 _I2V_MODEL,
                 arguments={
@@ -88,6 +90,7 @@ class FalClient:
         self._setup_env()
 
         try:
+            prompt = _limit_prompt(prompt)
             result = await fal_client.run_async(
                 _T2V_MODEL,
                 arguments={
@@ -125,3 +128,16 @@ class FalClient:
         except Exception as e:
             log.exception("FAL download failed: %s", e)
             return None
+
+
+def _limit_prompt(prompt: str) -> str:
+    cleaned = " ".join((prompt or "").split()).strip()
+    if len(cleaned) <= _MAX_PROMPT_CHARS:
+        return cleaned
+    log.warning("FAL prompt exceeded %d chars; compacting provider prompt.", _MAX_PROMPT_CHARS)
+    keep_tail = (
+        " Preserve source image geometry, room identity, materials, fixtures, text, people, logos, "
+        "and architecture. No fake rooms, no warped walls, no chaotic whip moves, no aggressive edit."
+    )
+    available = _MAX_PROMPT_CHARS - len(keep_tail) - 1
+    return f"{cleaned[:available].rstrip()} {keep_tail}".strip()

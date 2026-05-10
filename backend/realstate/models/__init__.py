@@ -1,5 +1,5 @@
 from .shot import Shot, ShotSlot, MotionPreset, TransitionType
-from .storyboard import Storyboard, ResolvedShot
+from .storyboard import Storyboard, StoryboardCreativeBrief, ResolvedShot
 from .template import Template, AudioCue, TextOverlaySpec, PacingMode
 from .render_config import RenderConfig, AspectRatio, RenderPass
 from .project import Project, Upload, ImageAnalysis, RenderJob, RenderStatus
@@ -10,6 +10,7 @@ __all__ = [
     "MotionPreset",
     "TransitionType",
     "Storyboard",
+    "StoryboardCreativeBrief",
     "ResolvedShot",
     "Template",
     "AudioCue",
