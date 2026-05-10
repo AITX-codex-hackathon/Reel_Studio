@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import os
 import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
@@ -21,7 +22,7 @@ from .storage.filesystem import ProjectFiles
 
 log = logging.getLogger(__name__)
 
-_CLIP_DURATION_SEC = 5.0  # fixed until beat-analysis module is wired in
+_DEFAULT_CLIP_DURATION_SEC = 2.4
 TelemetryCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 
@@ -124,6 +125,7 @@ class StoryboardBuilder:
         ordered_slots = [slot_by_id[slot_id] for slot_id in match.slot_order if slot_id in slot_by_id]
         ordered_slots.extend(slot for slot in template.shot_slots if slot.slot_id not in {s.slot_id for s in ordered_slots})
         ordered_slots = _adapt_slots_to_upload_count(ordered_slots, len(curated_analyzed))
+        ordered_slots = _apply_agent_timing_overrides(ordered_slots, match.style_overrides, beat_timestamps_ms)
         await _emit(
             telemetry,
             stage="storyboard",
@@ -168,6 +170,19 @@ class StoryboardBuilder:
             beat_plan = str(override.get("beat_plan") or "").strip()
             masking_plan = str(override.get("masking_plan") or "").strip()
             transition_plan = str(override.get("transition_plan") or "").strip()
+            ingress_seam = str(override.get("ingress_seam") or "").strip()
+            egress_seam = str(override.get("egress_seam") or "").strip()
+            shared_anchors_to_next = _clean_string_list(override.get("shared_anchors_to_next"), limit=140, max_items=5)
+            bridge_instructions = str(override.get("bridge_instructions") or "").strip()
+            bridge_strategy = _clean_bridge_strategy(override.get("bridge_strategy"))
+            transition_logic = _clean_transition_logic(override.get("transition_logic"))
+            if not bridge_strategy and transition_logic:
+                bridge_strategy = _clean_bridge_strategy(transition_logic.get("strategy"))
+            ramp_profile = _clean_ramp_profile(override.get("ramp_profile"))
+            visual_distance_score = _clean_float(override.get("visual_distance_score"), minimum=1.0, maximum=10.0)
+            bridge_duration_sec = _clean_float(override.get("bridge_duration_sec"), minimum=1.5, maximum=4.0)
+            velocity_vector = _clean_prompt_text(override.get("velocity_vector"), 180)
+            movement_intensity = _clean_movement_intensity(override.get("movement_intensity"))
             continuity_notes = str(override.get("continuity_notes") or "").strip()
             style_notes = str(override.get("style_notes") or "").strip()
             rubric_plan = _clean_rubric_plan(override.get("rubric_plan") or override.get("rubric"))
@@ -179,6 +194,12 @@ class StoryboardBuilder:
                     scene_purpose,
                     style_notes,
                     transition_plan,
+                    ingress_seam,
+                    egress_seam,
+                    bridge_instructions,
+                    _transition_logic_text(transition_logic),
+                    ramp_profile or "",
+                    velocity_vector,
                     _rubric_text(rubric_plan),
                     creative_brief.visual_theme,
                 ]
@@ -206,6 +227,8 @@ class StoryboardBuilder:
                 beat_plan=beat_plan,
                 masking_plan=masking_plan,
                 transition_plan=transition_plan,
+                transition_logic=_transition_logic_text(transition_logic),
+                ramp_profile=ramp_profile or "",
                 continuity_notes=continuity_notes,
                 rubric_plan=rubric_plan,
                 music_context=music_context,
@@ -236,6 +259,17 @@ class StoryboardBuilder:
                     beat_plan=beat_plan or None,
                     masking_plan=masking_plan or None,
                     transition_plan=transition_plan or None,
+                    ingress_seam=ingress_seam or None,
+                    egress_seam=egress_seam or None,
+                    shared_anchors_to_next=shared_anchors_to_next,
+                    bridge_instructions=bridge_instructions or None,
+                    bridge_strategy=bridge_strategy,
+                    transition_logic=transition_logic or None,
+                    ramp_profile=ramp_profile,
+                    visual_distance_score=visual_distance_score,
+                    bridge_duration_sec=bridge_duration_sec,
+                    velocity_vector=velocity_vector or None,
+                    movement_intensity=movement_intensity,
                     continuity_notes=continuity_notes or None,
                     rubric_plan=rubric_plan or None,
                     style_recipe_prompt=style_recipe_prompt,
@@ -367,9 +401,11 @@ class StoryboardBuilder:
         ordered_slots.extend(
             slot for slot in auto_template.shot_slots if slot.slot_id not in {s.slot_id for s in ordered_slots}
         )
+        ordered_slots = _apply_agent_timing_overrides(ordered_slots, match.style_overrides, beat_timestamps_ms)
         ordered_template = auto_template.model_copy(update={"shot_slots": ordered_slots})
         timings = self.scheduler.schedule(
             ordered_template,
+            str(Path(music.audio_path)) if music else None,
             beat_timestamps_ms=beat_timestamps_ms,
         )
         timing_by_slot = {t.slot_id: t for t in timings}
@@ -392,6 +428,19 @@ class StoryboardBuilder:
             beat_plan = str(override.get("beat_plan") or "").strip()
             masking_plan = str(override.get("masking_plan") or "").strip()
             transition_plan = str(override.get("transition_plan") or "").strip()
+            ingress_seam = str(override.get("ingress_seam") or "").strip()
+            egress_seam = str(override.get("egress_seam") or "").strip()
+            shared_anchors_to_next = _clean_string_list(override.get("shared_anchors_to_next"), limit=140, max_items=5)
+            bridge_instructions = str(override.get("bridge_instructions") or "").strip()
+            bridge_strategy = _clean_bridge_strategy(override.get("bridge_strategy"))
+            transition_logic = _clean_transition_logic(override.get("transition_logic"))
+            if not bridge_strategy and transition_logic:
+                bridge_strategy = _clean_bridge_strategy(transition_logic.get("strategy"))
+            ramp_profile = _clean_ramp_profile(override.get("ramp_profile"))
+            visual_distance_score = _clean_float(override.get("visual_distance_score"), minimum=1.0, maximum=10.0)
+            bridge_duration_sec = _clean_float(override.get("bridge_duration_sec"), minimum=1.5, maximum=4.0)
+            velocity_vector = _clean_prompt_text(override.get("velocity_vector"), 180)
+            movement_intensity = _clean_movement_intensity(override.get("movement_intensity"))
             continuity_notes = str(override.get("continuity_notes") or "").strip()
             style_notes = str(override.get("style_notes") or "").strip()
             rubric_plan = _clean_rubric_plan(override.get("rubric_plan") or override.get("rubric"))
@@ -403,6 +452,12 @@ class StoryboardBuilder:
                     scene_purpose,
                     style_notes,
                     transition_plan,
+                    ingress_seam,
+                    egress_seam,
+                    bridge_instructions,
+                    _transition_logic_text(transition_logic),
+                    ramp_profile or "",
+                    velocity_vector,
                     _rubric_text(rubric_plan),
                     creative_brief.visual_theme,
                 ]
@@ -421,6 +476,8 @@ class StoryboardBuilder:
                 beat_plan=beat_plan,
                 masking_plan=masking_plan,
                 transition_plan=transition_plan,
+                transition_logic=_transition_logic_text(transition_logic),
+                ramp_profile=ramp_profile or "",
                 continuity_notes=continuity_notes,
                 rubric_plan=rubric_plan,
                 music_context=curation_context,
@@ -448,6 +505,17 @@ class StoryboardBuilder:
                     beat_plan=beat_plan or None,
                     masking_plan=masking_plan or None,
                     transition_plan=transition_plan or None,
+                    ingress_seam=ingress_seam or None,
+                    egress_seam=egress_seam or None,
+                    shared_anchors_to_next=shared_anchors_to_next,
+                    bridge_instructions=bridge_instructions or None,
+                    bridge_strategy=bridge_strategy,
+                    transition_logic=transition_logic or None,
+                    ramp_profile=ramp_profile,
+                    visual_distance_score=visual_distance_score,
+                    bridge_duration_sec=bridge_duration_sec,
+                    velocity_vector=velocity_vector or None,
+                    movement_intensity=movement_intensity,
                     continuity_notes=continuity_notes or None,
                     rubric_plan=rubric_plan or None,
                     style_recipe_prompt=style_recipe_prompt,
@@ -594,7 +662,7 @@ def _auto_template_from_uploads(project: Project, uploads: list[AnalyzedUpload])
                     "source-safe mask strategy, and beat relationship."
                 ),
                 room_type=room_type,
-                duration_sec=_CLIP_DURATION_SEC,
+                duration_sec=_default_clip_duration(index=index),
                 motion=MotionPreset(motion_value),
                 motion_strength=0.48,
                 transition_in=TransitionType.CUT if index == 0 else TransitionType.DISSOLVE,
@@ -611,7 +679,7 @@ def _auto_template_from_uploads(project: Project, uploads: list[AnalyzedUpload])
             "the editor agent may reorder scenes and write cinematic prompts, but must preserve source truth."
         ),
         author="EstateReelMaker",
-        target_duration_sec=max(_CLIP_DURATION_SEC, len(slots) * _CLIP_DURATION_SEC),
+        target_duration_sec=_auto_reel_target_duration(len(slots)),
         aspect_ratio="9:16",
         pacing_mode=PacingMode.FREE,
         shot_slots=slots,
@@ -672,12 +740,170 @@ def _adapt_slots_to_upload_count(slots: list, upload_count: int) -> list:
     return [slots[i] for i in indexes[:target]]
 
 
+def _apply_agent_timing_overrides(
+    slots: list[ShotSlot],
+    style_overrides: dict[str, dict[str, Any]],
+    beat_timestamps_ms: Optional[list[int]],
+) -> list[ShotSlot]:
+    beat_sec = _average_beat_sec(beat_timestamps_ms)
+    out: list[ShotSlot] = []
+    for index, slot in enumerate(slots):
+        override = style_overrides.get(slot.slot_id, {})
+        duration = slot.duration_sec
+        duration_beats = _clean_int(override.get("duration_beats"), minimum=2, maximum=10)
+        if duration_beats and beat_sec:
+            duration = duration_beats * beat_sec
+        elif duration_beats:
+            duration = duration_beats * 0.5
+        elif slot.duration_sec <= 0:
+            duration = _default_clip_duration(index=index)
+        out.append(slot.model_copy(update={"duration_sec": _clip_duration(duration)}))
+    return out
+
+
 def _clip_duration(duration_sec: float) -> float:
-    return max(2.5, min(float(duration_sec), _CLIP_DURATION_SEC))
+    return max(_min_clip_duration(), min(float(duration_sec), _max_clip_duration()))
+
+
+def _default_clip_duration(index: int = 0) -> float:
+    # Tiny alternation keeps auto storyboards from feeling metronomic when no beat map exists.
+    base = _base_default_clip_duration()
+    return base + (0.25 if index % 5 == 0 else 0.0)
+
+
+def _base_default_clip_duration() -> float:
+    return _env_float("SNAPPY_DEFAULT_CLIP_SEC", _DEFAULT_CLIP_DURATION_SEC, minimum=1.5, maximum=4.0)
+
+
+def _min_clip_duration() -> float:
+    return _env_float("SNAPPY_MIN_SHOT_SEC", 1.35, minimum=0.75, maximum=3.0)
+
+
+def _max_clip_duration() -> float:
+    return _env_float("SNAPPY_MAX_SHOT_SEC", 3.4, minimum=_min_clip_duration(), maximum=6.0)
+
+
+def _auto_reel_target_duration(shot_count: int) -> float:
+    if shot_count <= 0:
+        return _default_clip_duration()
+    raw = shot_count * _base_default_clip_duration()
+    if shot_count >= 12:
+        return max(30.0, min(45.0, raw))
+    return max(_default_clip_duration(), min(30.0, raw))
+
+
+def _average_beat_sec(beat_timestamps_ms: Optional[list[int]]) -> Optional[float]:
+    times = [ms / 1000 for ms in (beat_timestamps_ms or []) if ms >= 0]
+    if len(times) < 2:
+        return None
+    intervals = [
+        b - a
+        for a, b in zip(times, times[1:])
+        if 0.2 <= b - a <= 2.0
+    ]
+    if not intervals:
+        return None
+    intervals.sort()
+    mid = len(intervals) // 2
+    return intervals[mid]
+
+
+def _clean_int(value: Any, minimum: int, maximum: int) -> Optional[int]:
+    try:
+        return max(minimum, min(maximum, int(round(float(value)))))
+    except (TypeError, ValueError):
+        return None
+
+
+def _env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except ValueError:
+        value = default
+    return max(minimum, min(maximum, value))
 
 
 def _clean_prompt_text(value: Any, limit: int) -> str:
     return " ".join(str(value or "").split())[:limit].strip()
+
+
+def _clean_string_list(value: Any, limit: int, max_items: int) -> list[str]:
+    if value is None:
+        return []
+    items = value if isinstance(value, list) else [value]
+    cleaned = [_clean_prompt_text(item, limit) for item in items]
+    return [item for item in cleaned if item][:max_items]
+
+
+def _clean_float(value: Any, minimum: float, maximum: float) -> Optional[float]:
+    try:
+        return max(minimum, min(maximum, float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _clean_bridge_strategy(value: Any) -> Optional[str]:
+    strategy = str(value or "").strip().lower()
+    allowed = {
+        "handshake",
+        "reveal",
+        "whip_pan",
+        "simple_cut",
+        "match_cut",
+        # Legacy technical values retained for saved storyboards.
+        "flfv_bridge",
+        "whip_pan_blur",
+        "dissolve",
+        "cut",
+        "skip",
+        "none",
+    }
+    return strategy if strategy in allowed else None
+
+
+def _clean_ramp_profile(value: Any) -> Optional[str]:
+    profile = str(value or "").strip().lower()
+    return profile if profile in {"cruise", "reveal", "impact"} else None
+
+
+def _clean_transition_logic(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    cleaned: dict[str, str] = {}
+    strategy = _clean_bridge_strategy(value.get("strategy"))
+    if strategy:
+        cleaned["strategy"] = strategy
+    spatial = str(value.get("spatial_continuity") or "").strip().lower()
+    if spatial in {"same_space", "adjacent_space", "shared_shape", "distant", "unrelated"}:
+        cleaned["spatial_continuity"] = spatial
+    technical = str(value.get("technical_execution") or "").strip().lower()
+    if technical in {"flfv_bridge", "speedramp_cut", "blur_slide", "clean_cut", "match_dissolve"}:
+        cleaned["technical_execution"] = technical
+    justification = _clean_prompt_text(value.get("justification"), 700)
+    risk_notes = _clean_prompt_text(value.get("risk_notes"), 700)
+    if justification:
+        cleaned["justification"] = justification
+    if risk_notes:
+        cleaned["risk_notes"] = risk_notes
+    return cleaned
+
+
+def _transition_logic_text(value: dict[str, str]) -> str:
+    if not value:
+        return ""
+    parts = [
+        f"transition strategy {value.get('strategy')}" if value.get("strategy") else "",
+        f"execution {value.get('technical_execution')}" if value.get("technical_execution") else "",
+        f"spatial continuity {value.get('spatial_continuity')}" if value.get("spatial_continuity") else "",
+        value.get("justification", ""),
+        value.get("risk_notes", ""),
+    ]
+    return " ".join(part for part in parts if part)
+
+
+def _clean_movement_intensity(value: Any) -> Optional[str]:
+    intensity = str(value or "").strip().lower()
+    return intensity if intensity in {"calm", "moderate", "fast"} else None
 
 
 def _clean_rubric_plan(value: Any) -> dict[str, Any]:
@@ -755,6 +981,8 @@ def _style_recipe_prompt(
     beat_plan: str,
     masking_plan: str,
     transition_plan: str,
+    transition_logic: str,
+    ramp_profile: str,
     continuity_notes: str,
     rubric_plan: dict[str, Any],
     music_context: str,
@@ -773,14 +1001,10 @@ def _style_recipe_prompt(
         ]
 
     grounding = (
-        "Use the provided source image as the absolute visual truth: preserve the real architecture, "
-        "layout, room identity, materials, window placement, furniture, landscaping, and color palette. "
-        "Do not create new rooms, extra floors, impossible geometry, signage, text, people, logos, "
-        "watermarks, or distorted fixtures."
+        "Use high fidelity to the provided source image while allowing visible camera movement and temporal progression."
         if has_source_image
         else
-        "No source photo is available for this slot, so generate only a restrained real-estate bridge "
-        "shot that matches the property context. Avoid impossible architecture and avoid adding text."
+        "No source photo is available for this slot, so generate a restrained moving real-estate bridge shot that matches the property context."
     )
     continuity_rules = " ".join(
         f"Continuity rule: {rule}." for rule in creative_brief.continuity_rules if rule
@@ -790,10 +1014,9 @@ def _style_recipe_prompt(
         part
         for part in [
             FAL_SHOT_SOP,
-            "Premium cinematic real-estate reel shot.",
+            "Motion-first premium real-estate video shot. Visible camera movement from frame 0.",
             f"Binding concept: {creative_brief.concept_title}. {creative_brief.logline}",
-            f"Whole-reel visual theme: {creative_brief.visual_theme}",
-            f"Whole-reel emotional arc: {creative_brief.emotional_arc}",
+            f"Visual theme: {creative_brief.visual_theme}",
             f"Storyboard need: {slot_description}.",
             f"Scene purpose: {scene_purpose}." if scene_purpose else "",
             f"Grounded room/visual anchor: {room_type or 'property detail'}.",
@@ -803,15 +1026,14 @@ def _style_recipe_prompt(
             f"Beat plan: {beat_plan}" if beat_plan else "",
             f"Masking and holdout plan: {masking_plan}" if masking_plan else "",
             f"Transition plan: {transition_plan}" if transition_plan else "",
+            f"Director transition logic: {transition_logic}" if transition_logic else "",
+            f"Velocity ramp profile: {ramp_profile}" if ramp_profile else "",
             f"Continuity notes: {continuity_notes}" if continuity_notes else "",
-            f"Rubric scene plan: {_rubric_text(rubric_plan)}" if rubric_plan else "",
             continuity_rules,
             f"Music strategy: {creative_brief.music_strategy}" if creative_brief.music_strategy else "",
             f"Audio/editing context: {music_context}" if music_context else "",
             grounding,
-            "Make the motion smooth, expensive, calm, dramatic, and commercial. Favor controlled dolly, "
-            "slider, crane, parallax, soft light movement, natural reflections, subtle atmosphere, and "
-            "clean editorial timing over hype, whip-heavy, trap-style, or chaotic movement.",
+            "Make the motion smooth, expensive, calm, dramatic, and commercial. Do not let the clip read as a still image.",
         ]
         if part
     )

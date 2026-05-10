@@ -14,7 +14,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Textarea } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/input";
 import type { ResolvedShot, Storyboard, Upload } from "@/lib/api";
 import { api } from "@/lib/api";
 import { cn, formatSeconds } from "@/lib/utils";
@@ -28,21 +28,6 @@ interface Props {
   onChange?: (storyboard: Storyboard) => void;
   onSave?: (storyboard?: Storyboard) => void | Promise<void>;
 }
-
-const MOTIONS = [
-  "slow_zoom_in",
-  "slow_zoom_out",
-  "pan_left",
-  "pan_right",
-  "pan_up",
-  "pan_down",
-  "push_in",
-  "pull_out",
-  "static",
-  "generative",
-];
-
-const TRANSITIONS = ["cut", "dissolve", "slide_left", "slide_right", "whip_pan", "fade"];
 
 export function StoryboardTimeline({
   storyboard,
@@ -121,7 +106,7 @@ export function StoryboardTimeline({
       {editable && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary-100 bg-primary-50/40 p-3">
           <p className="text-sm text-ink-muted">
-            AI wrote the first prompt pass. Reorder scenes horizontally, then edit only the shots that need a different prompt, style, transition, or camera move.
+            AI planned the reel. Reorder scenes horizontally, then add short direction only where you want a different feel, camera move, or transition.
           </p>
           <Button size="sm" onClick={() => onSave?.(storyboard)} disabled={!dirty || saving || savingOrder}>
             <Save className="w-3.5 h-3.5" />
@@ -237,7 +222,9 @@ export function StoryboardTimeline({
                   <div className="flex flex-wrap gap-1">
                     <Badge variant="muted" className="text-[10px]">{shot.motion}</Badge>
                     <Badge variant="muted" className="text-[10px]">{shot.transition_in}</Badge>
-                    {shot.style_recipe_prompt && <Badge variant="default" className="text-[10px]">prompt</Badge>}
+                    {(shot.scene_purpose || shot.transition_plan || shot.style_notes) && (
+                      <Badge variant="default" className="text-[10px]">AI plan</Badge>
+                    )}
                   </div>
                   {shot.scene_purpose && (
                     <p className="text-[11px] leading-snug text-ink-muted">{shortText(shot.scene_purpose, 118)}</p>
@@ -287,7 +274,7 @@ export function StoryboardTimeline({
             <div>
               <p className="text-sm font-medium text-ink">Scene {editingIndex + 1}: {editingShot.slot_id}</p>
               <p className="text-xs text-ink-muted">
-                Customize this AI prompt only if the scene needs a different style, transition, mask, or camera intention.
+                Review the compact plan, then write what you want changed. The full agent prompt stays hidden and is translated at render time.
               </p>
             </div>
             {dirty && <Badge variant="accent">unsaved edits</Badge>}
@@ -310,124 +297,59 @@ function ShotEditor({
   shot: ResolvedShot;
   onChange: (patch: Partial<ResolvedShot>) => void;
 }) {
-  const rubricText = shot.rubric_plan ? JSON.stringify(shot.rubric_plan, null, 2) : "";
-  const onRubricChange = (value: string) => {
-    try {
-      onChange({ rubric_plan: value.trim() ? JSON.parse(value) : null });
-    } catch {
-      onChange({ rubric_plan: { RAW_USER_RUBRIC_EDIT: value } });
-    }
-  };
+  const [summaryLine, motionLine] = planLines(shot);
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="Motion">
-          <select
-            value={shot.motion}
-            onChange={(event) => onChange({ motion: event.target.value })}
-            className="h-9 w-full rounded-xl border border-border bg-white px-3 text-xs text-ink"
-          >
-            {MOTIONS.map((motion) => <option key={motion} value={motion}>{motion}</option>)}
-          </select>
-        </Field>
-        <Field label="Transition">
-          <select
-            value={shot.transition_in}
-            onChange={(event) => onChange({ transition_in: event.target.value })}
-            className="h-9 w-full rounded-xl border border-border bg-white px-3 text-xs text-ink"
-          >
-            {TRANSITIONS.map((transition) => <option key={transition} value={transition}>{transition}</option>)}
-          </select>
-        </Field>
-        <Field label="Strength">
-          <Input
-            type="number"
-            min={0}
-            max={1}
-            step={0.05}
-            value={shot.motion_strength}
-            onChange={(event) => onChange({ motion_strength: Number(event.target.value) })}
-            className="h-9 text-xs"
-          />
-        </Field>
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border/60 bg-surface-alt/60 p-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-ink-subtle">AI plan</p>
+        <p className="mt-2 text-sm leading-relaxed text-ink">{summaryLine}</p>
+        <p className="mt-1 text-sm leading-relaxed text-ink-muted">{motionLine}</p>
       </div>
 
-      <Field label="Scene Purpose">
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-ink-muted">What do you want different?</p>
         <Textarea
-          value={shot.scene_purpose ?? ""}
-          onChange={(event) => onChange({ scene_purpose: event.target.value })}
-          className="min-h-[70px] text-xs"
+          value={shot.user_direction ?? ""}
+          onChange={(event) => onChange({ user_direction: event.target.value })}
+          placeholder="Example: make this transition feel like a fast drone drop into the next front door, then slow down into a calm interior push."
+          className="min-h-[110px] text-sm"
         />
-      </Field>
-      <Field label="Style Notes">
-        <Textarea
-          value={shot.style_notes ?? ""}
-          onChange={(event) => onChange({ style_notes: event.target.value })}
-          className="min-h-[96px] text-xs"
-        />
-      </Field>
-      <div className="grid gap-3 lg:grid-cols-2">
-        <Field label="Beat Plan">
-          <Textarea
-            value={shot.beat_plan ?? ""}
-            onChange={(event) => onChange({ beat_plan: event.target.value })}
-            className="min-h-[86px] text-xs"
-          />
-        </Field>
-        <Field label="Masking Plan">
-          <Textarea
-            value={shot.masking_plan ?? ""}
-            onChange={(event) => onChange({ masking_plan: event.target.value })}
-            className="min-h-[86px] text-xs"
-          />
-        </Field>
+        <p className="text-xs text-ink-subtle">
+          Leave blank to trust the AI director. Your note is merged with the hidden plan during render.
+        </p>
       </div>
-      <div className="grid gap-3 lg:grid-cols-2">
-        <Field label="Transition Plan">
-          <Textarea
-            value={shot.transition_plan ?? ""}
-            onChange={(event) => onChange({ transition_plan: event.target.value })}
-            className="min-h-[86px] text-xs"
-          />
-        </Field>
-        <Field label="Continuity Notes">
-          <Textarea
-            value={shot.continuity_notes ?? ""}
-            onChange={(event) => onChange({ continuity_notes: event.target.value })}
-            className="min-h-[86px] text-xs"
-          />
-        </Field>
-      </div>
-      <Field label="FAL Prompt / AI Draft">
-        <Textarea
-          value={shot.style_recipe_prompt ?? ""}
-          onChange={(event) => onChange({ style_recipe_prompt: event.target.value })}
-          className="min-h-[150px] font-mono text-[11px]"
-        />
-      </Field>
-      <Field label="Rubric JSON">
-        <Textarea
-          defaultValue={rubricText}
-          onBlur={(event) => onRubricChange(event.target.value)}
-          className="min-h-[160px] font-mono text-[11px]"
-        />
-      </Field>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-xs text-ink-muted">{label}</Label>
-      {children}
     </div>
   );
 }
 
 function shortText(value: string, limit: number) {
   return value.length > limit ? `${value.slice(0, limit - 1)}...` : value;
+}
+
+function planLines(shot: ResolvedShot): [string, string] {
+  const purpose = shot.scene_purpose || "Use this photo as a grounded scene in the larger property story.";
+  const style = shot.style_notes || shot.continuity_notes || "Keep the source image truthful with polished, calm real-estate camera movement.";
+  const transition = transitionLogicSummary(shot)
+    || shot.transition_plan
+    || `Use a motivated ${shot.transition_in} that fits neighboring geometry, light, and audio.`;
+  const ramp = shot.ramp_profile ? `Ramp profile: ${shot.ramp_profile}.` : "";
+  const beat = shot.beat_plan || "Let the camera breathe with the music and settle before the cut.";
+  return [
+    shortText(purpose, 190),
+    shortText(`${style} ${transition} ${ramp} ${beat}`, 235),
+  ];
+}
+
+function transitionLogicSummary(shot: ResolvedShot) {
+  const logic = shot.transition_logic;
+  if (!logic || typeof logic !== "object") return "";
+  const strategy = typeof logic.strategy === "string" ? logic.strategy : shot.bridge_strategy;
+  const justification = typeof logic.justification === "string" ? logic.justification : "";
+  const execution = typeof logic.technical_execution === "string" ? logic.technical_execution : "";
+  const label = strategy ? strategy.replaceAll("_", " ") : "";
+  const detail = justification || (execution ? `Execute as ${execution.replaceAll("_", " ")}.` : "");
+  return [label ? `Director edit: ${label}.` : "", detail].filter(Boolean).join(" ");
 }
 
 function Stat({

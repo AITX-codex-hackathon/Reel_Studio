@@ -37,7 +37,7 @@ class PhotoSelector:
     ):
         self.llm = llm or OpenAIClient()
         self.threshold = threshold or int(os.getenv("PHOTO_SELECTION_THRESHOLD", "20"))
-        self.limit = limit or int(os.getenv("PHOTO_SELECTION_LIMIT", "24"))
+        self.limit = limit or int(os.getenv("PHOTO_SELECTION_LIMIT", "16"))
         self.model = (
             os.getenv("OPENAI_PHOTO_SELECTOR_MODEL")
             or os.getenv("OPENAI_STORYBOARD_MODEL")
@@ -109,7 +109,7 @@ class PhotoSelector:
             "selection_rules": {
                 "max_selected": min(self.limit, len(uploads)),
                 "must_consider_every_upload": True,
-                "goal": "Choose the strongest photos for one cohesive cinematic property story.",
+                "goal": "Choose a tight 30-45 second reel set, usually 15-16 photos from a large upload batch.",
             },
             "uploads": [_upload_for_prompt(upload) for upload in uploads],
             "fallback_selected_upload_ids": fallback.selected_upload_ids,
@@ -128,7 +128,8 @@ class PhotoSelector:
             "Select the best photos from this analyzed upload set. You must reason across all uploads, "
             "but return only JSON. Do not choose only the highest technical scores; build a balanced film "
             "with arrival, reveal, proof, texture, emotional breath, and closing memory when the uploads allow it. "
-            "If the property has many similar photos, keep only the strongest representative frames. "
+            "If the property has many similar photos, keep only the strongest representative frames. For 25-40 uploads, "
+            "prefer about 15-16 selected photos unless the set is unusually weak or unusually strong. "
             "The selected_upload_ids should be ordered in the best rough story order before final storyboard matching.\n\n"
             "Return exactly this JSON shape:\n"
             "{\n"

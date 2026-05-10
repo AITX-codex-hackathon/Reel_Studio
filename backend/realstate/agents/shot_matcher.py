@@ -18,7 +18,13 @@ from typing import Any, Optional
 
 from .openai_client import OpenAIClient, OpenAIUnavailable
 from .image_analyzer import ImageAnalysisResult
-from .prompt_standard import CORE_REEL_SOP, STORYBOARD_AGENT_SOP, rubric_prompt_text, transition_reference_prompt_text
+from .prompt_standard import (
+    CORE_REEL_SOP,
+    STORYBOARD_AGENT_SOP,
+    rubric_prompt_text,
+    transition_reference_prompt_text,
+    video_agent_schema_prompt_text,
+)
 from ..models.shot import MotionPreset, ShotSlot, TransitionType
 from ..models.template import Template
 
@@ -215,6 +221,7 @@ class ShotMatcher:
             f"{CORE_REEL_SOP}\n\n{STORYBOARD_AGENT_SOP}\n\n"
             f"{rubric_prompt_text()}\n\n"
             f"{transition_reference_prompt_text()}\n\n"
+            f"{video_agent_schema_prompt_text()}\n\n"
             "Return only valid JSON."
         )
         user = (
@@ -223,19 +230,31 @@ class ShotMatcher:
             "write the shot direction. For each slot_id, assign either an upload_id or null. If there is "
             "at least one uploaded photo, avoid null and reuse real uploads as anchors, even when the "
             "template asks for a room type that is absent. Use null only as a last resort.\n\n"
-            "The plan must be detailed enough for downstream AI agents and FAL image-to-video. Each "
-            "scene must explain the purpose of the shot in the larger story, the camera path over the "
-            "duration, the beat/cut logic, source-safe mask holdouts, safe animated regions, transition "
-            "motivation, continuity, and negative constraints. Do not write generic transitions. Do not "
-            "write filler like 'make it cinematic'. Every millisecond should have intent. The rubric "
-            "object for each slot is mandatory and must be concrete enough for a human editor and FAL.\n\n"
+            "The plan must be detailed enough for downstream agents, but the provider-facing direction must stay compact. "
+            "Each scene needs a short narrative purpose, a motion-first camera path, a beat count, and a clean handoff. "
+            "Do not write generic transitions or filler like 'make it cinematic'. Prefer snappy reel timing: strong cuts on beats, "
+            "parallax, push-ins, pull-backs, top-view-to-door movement, and camera direction that can continue across adjacent photos.\n\n"
             "Style direction must stay calm commercial luxury: smooth, spacious, dramatic, soothing, "
             "editorial, and expensive. Avoid chaotic transitions, hype music-video language, aggressive "
             "camera moves, trap/hip-hop cues, nightclub impact hits, and fake architecture. Use the "
-            "transition reference to design seamless motivated transitions: matched vectors, masked "
-            "foreground wipes, glass/door passes, time-of-day match cuts, reflection/sky/water bridges, "
-            "velocity-matched dissolves, or invisible cuts during blur. Every camera move must complement "
+            "transition reference and video_agent_schema as technique vocabulary, not a checklist. Select "
+            "the relationship that the images actually support: drone height to doorway, exterior edge to "
+            "interior wall, glass to reflection, sky to window, material detail to room reveal, or calm "
+            "matched-direction movement. Every scene must describe both incoming and outgoing camera "
+            "perspective continuity: where the camera receives energy from the previous scene, how it moves "
+            "through this photo, and how its exit frame hands off into the next photo. If a transition should "
+            "feel like a fast top-drone drop into the next image's front door, say exactly how the speed ramp, "
+            "edge target, deceleration, masking, and beat timing should work. Treat every outgoing bridge as a "
+            "kinetic handshake: match velocity, name shared anchors, score visual distance, and choose FLFV only "
+            "when the two photos can plausibly connect without architecture morphing. If the pair is too risky, "
+            "choose an editorial cut, whip-pan, reveal, or match-cut and make the audio hide the seam. Every camera move must complement "
             "the photo, the neighboring scene, and the beat analysis; never choose motion just because it sounds impressive.\n\n"
+            "You are the empowered director, not a rule runner. For every outgoing pair, evaluate spatial continuity and choose the most natural edit grammar. "
+            "Avoid HANDSHAKE unless explicitly unavoidable; this workflow prefers beat-synced cuts with camera-direction continuity rather than AI morph bridges. Use REVEAL when the next shot is a detail, hero, or proof point of the current idea. "
+            "Use WHIP_PAN when the spaces are distant but momentum is high and the seam should be hidden with blur and a whoosh. Use SIMPLE_CUT when the music gives a clean hard beat or the rooms are unrelated. "
+            "Use MATCH_CUT when the photos share a strong shape, axis, color block, window, pool edge, table curve, or other compositional rhyme. "
+            "Do not force AI bridges that look like morphing soup. If two photos do not belong together spatially, set bridge_strategy to simple_cut, reveal, whip_pan, or match_cut. "
+            "FAL is only the camera; you are the editor deciding whether the camera should bridge, cut, whip, land, or dissolve.\n\n"
             "Return exactly this JSON shape:\n"
             "{\n"
             '  "creative_brief": {\n'
@@ -255,10 +274,28 @@ class ShotMatcher:
             '      "transition_in": "one allowed transition",\n'
             '      "color_grade": "warm_cinematic | cool_modern | warm_lifestyle | null",\n'
             '      "scene_purpose": "the narrative job of this scene inside the binding concept",\n'
-            '      "style_notes": "4-8 dense sentences of precise cinematography and FAL direction",\n'
-            '      "beat_plan": "beginning/midpoint/end timing and audio cut intention",\n'
+            '      "style_notes": "1-2 compact motion-first sentences; start with parallax/push/pull/pan/top-view/dolly direction",\n'
+            '      "duration_beats": 4,\n'
+            '      "beat_plan": "which beat this shot enters/exits on and why the cut should feel snappy",\n'
             '      "masking_plan": "source-safe holdouts and safe animated regions",\n'
             '      "transition_plan": "motivated transition logic into/out of this scene",\n'
+            '      "ingress_seam": "how this scene receives velocity/light/composition from the previous scene",\n'
+            '      "egress_seam": "how this scene exits toward the next scene without a velocity jerk",\n'
+            '      "shared_anchors_to_next": ["visible anchor shared with next scene", "..."],\n'
+            '      "bridge_instructions": "outgoing bridge prompt from this scene into the next scene using sandwich prompting: vector, constraint, pivot, exposure/beat handling",\n'
+            '      "bridge_strategy": "reveal | whip_pan | simple_cut | match_cut | handshake",\n'
+            '      "transition_logic": {\n'
+            '        "strategy": "reveal | whip_pan | simple_cut | match_cut | handshake",\n'
+            '        "justification": "why this is the most natural professional edit for this outgoing pair",\n'
+            '        "spatial_continuity": "same_space | adjacent_space | shared_shape | distant | unrelated",\n'
+            '        "technical_execution": "flfv_bridge | speedramp_cut | blur_slide | clean_cut | match_dissolve",\n'
+            '        "risk_notes": "architecture/morph/velocity risks and how the edit avoids them"\n'
+            "      },\n"
+            '      "ramp_profile": "cruise | reveal | impact",\n'
+            '      "visual_distance_score": 1.0,\n'
+            '      "bridge_duration_sec": 1.5,\n'
+            '      "velocity_vector": "initial inherited camera inertia, e.g. forward_dolly_25pct or pan_left_20pct",\n'
+            '      "movement_intensity": "calm | moderate | fast",\n'
             '      "continuity_notes": "geometry/light/color/camera-direction continuity requirements",\n'
             '      "rubric": {\n'
             '        "SCENE_ID": "01",\n'
@@ -328,6 +365,11 @@ class ShotMatcher:
                 cleaned["motion_strength"] = max(0.0, min(1.0, float(override.get("motion_strength"))))
             except (TypeError, ValueError):
                 pass
+            try:
+                duration_beats = int(round(float(override.get("duration_beats"))))
+                cleaned["duration_beats"] = max(2, min(10, duration_beats))
+            except (TypeError, ValueError):
+                pass
             if override.get("transition_in") in {transition.value for transition in TransitionType}:
                 cleaned["transition_in"] = override["transition_in"]
             color_grade = override.get("color_grade")
@@ -336,6 +378,36 @@ class ShotMatcher:
             for field_name, limit in _STYLE_TEXT_FIELDS.items():
                 if override.get(field_name):
                     cleaned[field_name] = _clean_text(override[field_name], limit)
+            anchors = _clean_string_list(override.get("shared_anchors_to_next"), limit=140, max_items=5)
+            if anchors:
+                cleaned["shared_anchors_to_next"] = anchors
+            strategy = str(override.get("bridge_strategy") or "").strip().lower()
+            if strategy in _BRIDGE_STRATEGIES:
+                cleaned["bridge_strategy"] = strategy
+            transition_logic = _clean_transition_logic(override.get("transition_logic"))
+            if transition_logic:
+                cleaned["transition_logic"] = transition_logic
+                logic_strategy = str(transition_logic.get("strategy") or "").strip().lower()
+                if "bridge_strategy" not in cleaned and logic_strategy in _BRIDGE_STRATEGIES:
+                    cleaned["bridge_strategy"] = logic_strategy
+            ramp_profile = str(override.get("ramp_profile") or "").strip().lower()
+            if ramp_profile in _RAMP_PROFILES:
+                cleaned["ramp_profile"] = ramp_profile
+            intensity = str(override.get("movement_intensity") or "").strip().lower()
+            if intensity in _MOVEMENT_INTENSITIES:
+                cleaned["movement_intensity"] = intensity
+            try:
+                distance = float(override.get("visual_distance_score"))
+                cleaned["visual_distance_score"] = max(1.0, min(10.0, distance))
+            except (TypeError, ValueError):
+                pass
+            try:
+                duration = float(override.get("bridge_duration_sec"))
+                cleaned["bridge_duration_sec"] = max(1.5, min(4.0, duration))
+            except (TypeError, ValueError):
+                pass
+            if override.get("velocity_vector"):
+                cleaned["velocity_vector"] = _clean_text(override.get("velocity_vector"), 180)
             rubric = _clean_rubric_plan(override.get("rubric") or override.get("rubric_plan"))
             if rubric:
                 cleaned["rubric_plan"] = rubric
@@ -445,8 +517,29 @@ _STYLE_TEXT_FIELDS: dict[str, int] = {
     "beat_plan": 1400,
     "masking_plan": 1800,
     "transition_plan": 1400,
+    "ingress_seam": 900,
+    "egress_seam": 900,
+    "bridge_instructions": 1800,
+    "velocity_vector": 180,
     "continuity_notes": 1400,
 }
+
+_BRIDGE_STRATEGIES = {
+    "handshake",
+    "reveal",
+    "whip_pan",
+    "simple_cut",
+    "match_cut",
+    # Legacy technical values retained for existing storyboards and edited drafts.
+    "flfv_bridge",
+    "whip_pan_blur",
+    "dissolve",
+    "cut",
+    "skip",
+    "none",
+}
+_RAMP_PROFILES = {"cruise", "reveal", "impact"}
+_MOVEMENT_INTENSITIES = {"calm", "moderate", "fast"}
 
 
 def _fallback_creative_brief(template: Template, upload_count: int) -> dict[str, Any]:
@@ -492,15 +585,12 @@ def _fallback_style_overrides(template: Template) -> dict[str, dict[str, Any]]:
                 f"{entrance.capitalize()} for the {room}: make this frame serve the larger property story, "
                 "either by establishing scale, inviting the viewer deeper, proving material quality, or creating a calm emotional pause."
             ),
+            "duration_beats": 4 if index % 4 else 6,
             "style_notes": (
-                "Use a controlled real-estate camera move with lens-stable architecture and a deliberate beginning, midpoint, and exit. "
-                "Start from the strongest readable composition in the source photo, move slowly enough that vertical lines remain trustworthy, "
-                "and let parallax come from safe foreground/background separation rather than warping walls or fixtures. "
-                "Favor premium commercial restraint: soft reflected light, elegant shadows, natural depth, and a composed final frame that can cut cleanly."
+                "Start with a clear parallax or dolly move from frame 0. Keep the camera direction simple, confident, and ready to cut on the next beat."
             ),
             "beat_plan": (
-                "Hold the first fraction of the shot long enough for orientation, let the camera movement peak near the strongest musical beat, "
-                f"and use the final half-second as a clean {exit_note}. Avoid sudden speed changes unless the audio provides a gentle downbeat."
+                f"Use a compact 4-6 beat shot: enter on a beat, make one readable camera move, then cut cleanly into the {exit_note}."
             ),
             "masking_plan": (
                 "Hard holdout architecture, window frames, floor edges, ceiling lines, furniture geometry, readable text, logos, people, and fixtures. "
@@ -509,6 +599,26 @@ def _fallback_style_overrides(template: Template) -> dict[str, dict[str, Any]]:
             "transition_plan": (
                 f"Use {slot.transition_in.value} only if it supports the geometry and light of the neighboring shot; otherwise keep the cut clean and motivated by the music."
             ),
+            "ingress_seam": "Receive the prior scene through matched light, camera direction, or a stable architectural edge.",
+            "egress_seam": "Exit on a readable architectural edge or light vector that can bridge cleanly into the next scene.",
+            "shared_anchors_to_next": [],
+            "bridge_instructions": (
+                "Use a conservative source-safe edit: bridge only when the next photo is spatially plausible; otherwise land cleanly on the music beat "
+                "with a stable exit frame, subtle color glue, or tasteful whip if momentum supports it."
+            ),
+            "bridge_strategy": "simple_cut",
+            "transition_logic": {
+                "strategy": "simple_cut",
+                "justification": "Heuristic fallback cannot safely prove spatial continuity, so it defaults to a clean motivated edit instead of a forced AI morph.",
+                "spatial_continuity": "unrelated",
+                "technical_execution": "clean_cut",
+                "risk_notes": "Avoid architecture hallucination until the LLM can identify a truthful shared anchor.",
+            },
+            "ramp_profile": "cruise",
+            "visual_distance_score": 7.0,
+            "bridge_duration_sec": 1.5,
+            "velocity_vector": "inherit gentle forward or lateral camera drift from the previous shot; never start completely static after a bridge.",
+            "movement_intensity": "calm",
             "continuity_notes": (
                 "Maintain calm camera direction, realistic exposure, consistent color temperature, and trustworthy room scale. "
                 "If the source image is reused, change the intention and crop path without pretending it is a different room."
@@ -592,9 +702,40 @@ def _clean_rubric_plan(value: Any) -> dict[str, Any]:
     return cleaned
 
 
+def _clean_transition_logic(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+
+    strategy = str(value.get("strategy") or "").strip().lower()
+    technical = str(value.get("technical_execution") or "").strip().lower()
+    spatial = str(value.get("spatial_continuity") or "").strip().lower()
+    cleaned: dict[str, str] = {}
+    if strategy in _BRIDGE_STRATEGIES:
+        cleaned["strategy"] = strategy
+    if spatial in {"same_space", "adjacent_space", "shared_shape", "distant", "unrelated"}:
+        cleaned["spatial_continuity"] = spatial
+    if technical in {"flfv_bridge", "speedramp_cut", "blur_slide", "clean_cut", "match_dissolve"}:
+        cleaned["technical_execution"] = technical
+    justification = _clean_text(value.get("justification"), 700)
+    risk_notes = _clean_text(value.get("risk_notes"), 700)
+    if justification:
+        cleaned["justification"] = justification
+    if risk_notes:
+        cleaned["risk_notes"] = risk_notes
+    return cleaned
+
+
 def _clean_text(value: Any, limit: int) -> str:
     text = " ".join(str(value or "").split())
     return text[:limit].strip()
+
+
+def _clean_string_list(value: Any, limit: int, max_items: int) -> list[str]:
+    if value is None:
+        return []
+    items = value if isinstance(value, list) else [value]
+    cleaned = [_clean_text(item, limit) for item in items]
+    return [item for item in cleaned if item][:max_items]
 
 
 # Soft adjacencies — close-enough rooms when exact match fails
