@@ -9,6 +9,9 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+backend/main/
+
+run.sh
 
 # Node
 node_modules/
@@ -19,6 +22,10 @@ dist/
 *.tsbuildinfo
 
 backend/main
+frontend/node_modules
+frontend/.next
+frontend/package-lock.json
+frontend/yarn.lock
 
 # Env
 .env

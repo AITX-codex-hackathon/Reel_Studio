@@ -1,7 +1,8 @@
 "use client";
 
-import { Download, Film, Loader2 } from "lucide-react";
+import { Download, Film, Loader2, Maximize2, X } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -18,12 +19,16 @@ interface Props {
 }
 
 export function RenderProgressCard({ projectId, job, liveProgress, liveMessage, livePhase }: Props) {
+  const [instagramOpen, setInstagramOpen] = useState(false);
   const progressPct = (liveProgress ?? job.progress) * 100;
   const isQueued = job.status === "pending";
   const isRunning = job.status === "running";
   const isActive = isQueued || isRunning;
   const isDone = job.status === "succeeded";
   const isError = job.status === "failed";
+  const isInstagram = job.pass_type.startsWith("instagram_");
+  const isDraft = job.pass_type.endsWith("draft");
+  const videoUrl = api.renderFileUrl(projectId, job.id);
 
   return (
     <div
@@ -55,19 +60,26 @@ export function RenderProgressCard({ projectId, job, liveProgress, liveMessage, 
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm">
-            {job.pass_type === "draft" ? "Draft preview" : "Final render"}
+            {isInstagram
+              ? isDraft ? "Instagram Reel draft" : "Instagram Reel final"
+              : isDraft ? "Horizontal draft" : "Horizontal final"}
           </div>
           <div className="text-xs text-ink-subtle">
             {isQueued && "Queued"}
             {isRunning && `${Math.round(progressPct)}% — ${liveMessage || "rendering…"}`}
-            {isDone && "Ready"}
+            {isDone && (isInstagram ? "9:16 reel ready" : "16:9 preview ready")}
             {isError && "Failed"}
           </div>
         </div>
+        {isDone && isInstagram && (
+          <Button size="sm" variant="secondary" onClick={() => setInstagramOpen(true)}>
+            <Maximize2 className="w-4 h-4" /> Open Reel
+          </Button>
+        )}
         {isDone && (
           <Button asChild size="sm" variant="default">
-            <Link href={api.renderFileUrl(projectId, job.id)} target="_blank" download>
-              <Download className="w-4 h-4" /> Download
+            <Link href={videoUrl} target="_blank" download>
+              <Download className="w-4 h-4" /> {isInstagram ? "Download Reel" : "Download"}
             </Link>
           </Button>
         )}
@@ -90,13 +102,43 @@ export function RenderProgressCard({ projectId, job, liveProgress, liveMessage, 
       )}
 
       {isDone && (
-        <div className="mt-4 rounded-lg overflow-hidden bg-black">
+        <div className="mt-4 flex justify-center rounded-lg border border-border/50 bg-ink p-3">
           <video
             controls
             preload="metadata"
-            className="w-full max-h-[60vh]"
-            src={api.renderFileUrl(projectId, job.id)}
+            playsInline
+            className={cn(
+              "max-h-[70vh] max-w-full rounded-md bg-black object-cover",
+              isInstagram ? "aspect-[9/16] w-auto" : "aspect-video w-full",
+            )}
+            src={videoUrl}
           />
+        </div>
+      )}
+
+      {instagramOpen && isInstagram && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-lg bg-white shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+              <div>
+                <div className="text-sm font-semibold">Instagram Reel Preview</div>
+                <div className="text-xs text-ink-subtle">9:16 vertical, ready to post</div>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setInstagramOpen(false)} aria-label="Close Instagram preview">
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="flex min-h-0 flex-1 justify-center bg-ink p-4">
+              <video
+                controls
+                autoPlay
+                preload="metadata"
+                playsInline
+                className="aspect-[9/16] max-h-[80vh] w-auto max-w-full rounded-md bg-black object-cover"
+                src={videoUrl}
+              />
+            </div>
+          </div>
         </div>
       )}
 

@@ -91,9 +91,23 @@ export type ResolvedShot = {
   beat_plan?: string | null;
   masking_plan?: string | null;
   transition_plan?: string | null;
+  ingress_seam?: string | null;
+  egress_seam?: string | null;
+  shared_anchors_to_next?: string[];
+  bridge_instructions?: string | null;
+  bridge_strategy?: string | null;
+  transition_logic?: Record<string, unknown> | null;
+  ramp_profile?: string | null;
+  visual_distance_score?: number | null;
+  bridge_duration_sec?: number | null;
+  velocity_vector?: string | null;
+  movement_intensity?: string | null;
   continuity_notes?: string | null;
   rubric_plan?: Record<string, unknown> | null;
   style_recipe_prompt?: string | null;
+  user_direction?: string | null;
+  is_transition_bridge?: boolean;
+  trim_handle_sec?: number;
 };
 
 export type StoryboardCreativeBrief = {
@@ -124,11 +138,13 @@ export type Storyboard = {
   notes: string;
 };
 
+export type RenderPassType = "draft" | "final" | "instagram_draft" | "instagram_final";
+
 export type RenderJob = {
   id: string;
   project_id: string;
   storyboard_id: string;
-  pass_type: "draft" | "final";
+  pass_type: RenderPassType;
   status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
   progress: number;
   output_path?: string | null;
@@ -208,7 +224,7 @@ export type WorkflowSnapshotEvent = {
   message?: string;
   progress?: number;
   render_id?: string;
-  pass_type?: "draft" | "final";
+  pass_type?: RenderPassType;
   current?: number;
   total?: number;
   shot_id?: string;
@@ -277,7 +293,7 @@ export const api = {
     }),
 
   // render
-  startRender: (projectId: string, passType: "draft" | "final") =>
+  startRender: (projectId: string, passType: RenderPassType) =>
     request<RenderJob>(`/projects/${projectId}/renders?pass_type=${passType}`, {
       method: "POST",
     }),

@@ -3,7 +3,7 @@
 export type ProgressMessage = {
   type?: "render" | "workflow";
   render_id: string;
-  pass_type: "draft" | "final";
+  pass_type: "draft" | "final" | "instagram_draft" | "instagram_final";
   progress?: number;
   seconds_done?: number;
   fps?: number;
@@ -26,7 +26,7 @@ export type WorkflowMessage = {
   message?: string;
   progress?: number;
   render_id?: string;
-  pass_type?: "draft" | "final";
+  pass_type?: "draft" | "final" | "instagram_draft" | "instagram_final";
   current?: number;
   total?: number;
   shot_id?: string;

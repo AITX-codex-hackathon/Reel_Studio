@@ -26,6 +26,7 @@ ReelStudio eliminates every one of these steps. An agent uploads their existing 
 | Metric | Target | Achieved |
 |---|---|---|
 | Time from upload to downloadable reel | < 3 minutes | ~2 min (draft), ~5 min (final) |
+| Full 20-photo reel workflow | < 10 minutes | 7-9 min end-to-end with agent image evaluation, narrative photo ordering, music selection, beat-synced audio, and a customizable storyboard |
 | Photos required | As few as 3 | Works with 3–150 photos |
 | Output format | 9:16, 1080p, no black bars | Force-crop-to-fill pipeline |
 | AI hallucination guardrails | No invented rooms or text | Strict grounding instructions to Kling |
