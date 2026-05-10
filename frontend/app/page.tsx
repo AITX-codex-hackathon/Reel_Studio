@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowRight, Film, Plus, Sparkles, Wand2 } from "lucide-react";
+import { Film, Plus, Sparkles, Wand2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,19 +36,14 @@ export default function DashboardPage() {
             Turn property photos into <span className="gradient-text">cinematic reels</span> in minutes.
           </h1>
           <p className="mt-4 text-lg text-ink-muted leading-relaxed">
-            Upload 50–150 photos, pick a template, and our AI agents storyboard, fill missing
-            shots with Nano Banana, and render a beat-aware 60-second reel.
+            Upload your property photos, choose music, and our AI agents storyboard, arrange,
+            and render a beat-aware cinematic reel ready for Instagram.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg">
               <Link href="/projects/new">
                 <Plus className="w-4 h-4" />
                 Start a new reel
-              </Link>
-            </Button>
-            <Button asChild variant="outline" size="lg">
-              <Link href="/templates">
-                Browse templates <ArrowRight className="w-4 h-4" />
               </Link>
             </Button>
           </div>
@@ -127,7 +122,6 @@ export default function DashboardPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="flex flex-wrap gap-1.5">
-                      {p.template_id && <Badge variant="default">{p.template_id}</Badge>}
                       {p.storyboard_id ? (
                         <Badge variant="success">storyboard ready</Badge>
                       ) : (
