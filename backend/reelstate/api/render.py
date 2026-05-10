@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -38,14 +38,16 @@ async def start_render(
         raise HTTPException(404, "Project not found")
     if not project.storyboard_id:
         raise HTTPException(400, "No storyboard yet. Generate one first.")
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        raise HTTPException(500, "FFmpeg and ffprobe must be available on PATH before rendering.")
 
     sb_row = db.get(StoryboardRow, project.storyboard_id)
     if not sb_row:
         raise HTTPException(404, "Storyboard not found")
     storyboard = Storyboard(**sb_row.json)
 
-    template = _loader.get(storyboard.template_id)
-    if not template:
+    template = None if storyboard.template_id == "auto" else _loader.get(storyboard.template_id)
+    if storyboard.template_id != "auto" and not template:
         raise HTTPException(404, f"Template {storyboard.template_id} not found")
 
     pf = ProjectFiles()
@@ -66,6 +68,17 @@ async def start_render(
     db.refresh(job)
 
     job_id = job.id
+    await broadcast_render_progress(
+        project_id,
+        {
+            "render_id": job_id,
+            "pass_type": pass_type,
+            "status": "queued",
+            "phase": "queued",
+            "progress": 0.0,
+            "message": f"{pass_type.title()} render queued. Preparing the render worker.",
+        },
+    )
     background_tasks.add_task(
         _run_render,
         job_id=job_id,
@@ -121,8 +134,8 @@ async def _run_render(
     scratch: Path,
 ) -> None:
     """Background render task. Updates DB row + pushes WS progress."""
-    template = _loader.get(template_id)
-    if not template:
+    template = None if template_id == "auto" else _loader.get(template_id)
+    if template_id != "auto" and not template:
         log.error("Template %s vanished mid-render", template_id)
         return
 
@@ -133,6 +146,17 @@ async def _run_render(
             return
         row.status = RenderStatus.RUNNING.value
         db.commit()
+    await broadcast_render_progress(
+        project_id,
+        {
+            "render_id": job_id,
+            "pass_type": pass_type,
+            "status": "running",
+            "phase": "starting",
+            "progress": 0.0,
+            "message": "Starting render pipeline.",
+        },
+    )
 
     try:
         gen = (
@@ -160,6 +184,11 @@ async def _run_render(
                         "progress": progress.progress,
                         "seconds_done": progress.seconds_done,
                         "fps": progress.fps,
+                        "phase": progress.phase,
+                        "message": progress.message,
+                        "current": progress.current,
+                        "total": progress.total,
+                        "shot_id": progress.shot_id,
                     },
                 )
 
@@ -180,6 +209,8 @@ async def _run_render(
                 "pass_type": pass_type,
                 "progress": 1.0,
                 "status": "succeeded",
+                "phase": "complete",
+                "message": "Render complete. The reel is ready to review.",
                 "output_url": f"/projects/{project_id}/renders/{job_id}/file",
             },
         )
@@ -199,6 +230,8 @@ async def _run_render(
                 "render_id": job_id,
                 "pass_type": pass_type,
                 "status": "failed",
+                "phase": "failed",
+                "message": "Render failed.",
                 "error": str(e)[:500],
             },
         )

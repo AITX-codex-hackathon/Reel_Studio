@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { ArrowRight, Film, Loader2, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
+import { Film, Loader2, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -113,9 +113,9 @@ export default function DashboardPage() {
               <span className="gradient-text">cinematic reels</span>
             </h1>
             <p className="text-base text-white/50 leading-relaxed max-w-md">
-              Upload your property photos, pick a template, and our AI agents
-              storyboard, fill missing shots, and render a beat-aware 60-second
-              reel — ready for Instagram and TikTok.
+              Upload your property photos and our AI agents storyboard, fill
+              missing shots, and render a beat-aware 60-second reel — ready for
+              Instagram and TikTok.
             </p>
 
             <div className="flex flex-wrap gap-3 pt-1">
@@ -123,11 +123,6 @@ export default function DashboardPage() {
                 <Plus className="w-4 h-4" />
                 Start a new project
               </NewReelButton>
-              <Button asChild variant="outline" size="lg">
-                <Link href="/templates">
-                  Browse templates <ArrowRight className="w-4 h-4" />
-                </Link>
-              </Button>
             </div>
           </div>
         </div>

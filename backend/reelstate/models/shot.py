@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -49,19 +49,15 @@ class ShotSlot(BaseModel):
     text_overlay_id: Optional[str] = Field(None, description="Reference to a text overlay defined in the template")
     must_fill: bool = Field(True, description="If False and no upload matches, the slot is dropped (not generated)")
     fallback_to_generated: bool = Field(
-        True, description="If no upload matches and must_fill, generate via Nano Banana"
+        True, description="If no upload matches and must_fill, generate via fal.ai"
     )
     generation_prompt: Optional[str] = Field(
-        None, description="Prompt used by Nano Banana when fallback fires"
+        None, description="Prompt used by fal.ai when fallback fires"
     )
 
 
 class Shot(BaseModel):
-    """A resolved shot — slot + assigned image + final timing.
-
-    Direct analog of LTX-Video's `ConditioningItem(media, frame_number, strength)`.
-    Here the "media" is an image path and "frame_number" becomes "start_time".
-    """
+    """A resolved shot — slot + assigned image + final timing."""
     slot_id: str
     image_path: str = Field(..., description="Absolute path to the still (uploaded or generated)")
     start_time_sec: float = Field(..., ge=0)
@@ -71,8 +67,47 @@ class Shot(BaseModel):
     transition_in: TransitionType
     color_grade: Optional[str] = None
     text_overlay_id: Optional[str] = None
-    is_generated: bool = Field(False, description="True if image came from Nano Banana")
+    is_generated: bool = Field(False, description="True if image came from FAL")
     source_upload_id: Optional[str] = None
+
+    # Style recipe fields — set during storyboard build
+    room_type: Optional[str] = None
+    style_recipe_id: Optional[str] = None
+    style_notes: Optional[str] = Field(
+        None,
+        description="Editor-agent direction for camera, mood, transitions, and story intent.",
+    )
+    scene_purpose: Optional[str] = Field(
+        None,
+        description="Narrative purpose of this scene inside the reel's binding concept.",
+    )
+    beat_plan: Optional[str] = Field(
+        None,
+        description="Beat-level timing and cut intention for this shot.",
+    )
+    masking_plan: Optional[str] = Field(
+        None,
+        description="Source-safe mask and holdout plan for image-to-video generation.",
+    )
+    transition_plan: Optional[str] = Field(
+        None,
+        description="Motivated transition logic into or out of this shot.",
+    )
+    continuity_notes: Optional[str] = Field(
+        None,
+        description="Scene continuity notes for light, geometry, camera direction, and visual grammar.",
+    )
+    rubric_plan: Optional[dict[str, Any]] = Field(
+        None,
+        description="Rubric.json scene plan: narrative, audio sync, optics, kinetic path, masking, transitions, and FAL prompt.",
+    )
+    style_recipe_prompt: Optional[str] = Field(
+        None,
+        description="Grounded cinematic prompt passed to the video provider for this shot.",
+    )
+
+    # Set during render — path to FAL-generated .mp4 clip
+    video_clip_path: Optional[str] = None
 
     @property
     def end_time_sec(self) -> float:

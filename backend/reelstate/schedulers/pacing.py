@@ -7,7 +7,6 @@ scheduler decides *when* events happen.
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -31,11 +30,19 @@ class PacingScheduler:
         self,
         template: Template,
         audio_path: Optional[str] = None,
+        beat_timestamps_ms: Optional[list[int]] = None,
     ) -> list[ShotTiming]:
-        if template.pacing_mode == PacingMode.FREE or not audio_path:
+        has_audio_grid = bool(beat_timestamps_ms) or bool(audio_path)
+        if template.pacing_mode == PacingMode.FREE and not has_audio_grid:
             return self._free(template)
 
-        bpm, beat_grid = self._analyze_beats(audio_path)
+        if beat_timestamps_ms:
+            beat_grid = [ms / 1000 for ms in beat_timestamps_ms]
+        elif audio_path:
+            _bpm, beat_grid = self._analyze_beats(audio_path)
+        else:
+            return self._free(template)
+
         if not beat_grid:
             log.info("Beat detection unavailable; falling back to free pacing")
             return self._free(template)
@@ -44,7 +51,7 @@ class PacingScheduler:
             grid = beat_grid
         elif template.pacing_mode == PacingMode.DOWNBEAT:
             grid = beat_grid[::4] if len(beat_grid) >= 4 else beat_grid
-        elif template.pacing_mode == PacingMode.BAR:
+        elif template.pacing_mode in (PacingMode.BAR, PacingMode.FREE):
             grid = beat_grid[::8] if len(beat_grid) >= 8 else beat_grid[::4]
         else:
             return self._free(template)

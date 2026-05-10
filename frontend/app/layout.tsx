@@ -96,12 +96,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 >
                   Projects
                 </Link>
-                <Link
-                  href="/templates"
-                  className="px-3 py-2 rounded-lg text-ink-muted hover:text-white hover:bg-white/[0.06] transition-colors"
-                >
-                  Templates
-                </Link>
                 <NewReelButton isHeader>New Project</NewReelButton>
                 <UserNav />
               </nav>

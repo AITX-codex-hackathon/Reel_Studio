@@ -15,9 +15,11 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from reelstate.api import (  # noqa: E402
     audio,
     files,
+    free_music,
     projects,
     render,
     storyboards,
+    styles,
     templates,
     uploads,
     ws,
@@ -61,6 +63,7 @@ app.add_middleware(
 def health() -> dict:
     return {
         "status": "ok",
+        "vlm": f"openai/{settings.openai_vision_model}",
         "providers": {
             "openai": bool(settings.openai_api_key),
             "fal": bool(settings.fal_key),
@@ -73,8 +76,10 @@ def health() -> dict:
 app.include_router(projects.router)
 app.include_router(uploads.router)
 app.include_router(templates.router)
+app.include_router(styles.router)
 app.include_router(storyboards.router)
 app.include_router(render.router)
 app.include_router(audio.router)
+app.include_router(free_music.router)
 app.include_router(files.router)
 app.include_router(ws.router)

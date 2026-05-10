@@ -1,0 +1,150 @@
+template_id: lifestyle-home
+name: Lifestyle Home
+description: >
+  45-second reel that sells the lifestyle, not just the house. Pool, backyard, outdoor
+  entertaining, and amenities take center stage. Interior highlights support but don't
+  dominate. Closes with an aspirational exterior at dusk. Mood: relaxed, premium, desirable.
+author: AutoHDR
+version: "1.0.0"
+
+target_duration_sec: 45.0
+aspect_ratio: "9:16"
+pacing_mode: free
+
+global_color_grade: warm_cinematic
+
+draft_resolution_p: 540
+final_resolution_p: 1080
+draft_crf: 28
+final_crf: 18
+
+shot_slots:
+  - slot_id: exterior_welcome
+    description: Wide exterior — inviting, daylight or late afternoon
+    room_type: exterior
+    duration_sec: 4.0
+    motion: slow_zoom_in
+    motion_strength: 0.3
+    transition_in: fade
+    text_overlay_id: address_card
+    fallback_to_generated: true
+    generation_prompt: >
+      Inviting luxury home exterior at late afternoon light, warm tones, lush landscaping,
+      wide architectural shot, 9:16
+
+  - slot_id: living_flow
+    description: Living room — open plan, flowing into outdoors if possible
+    room_type: living_room
+    duration_sec: 3.5
+    motion: pan_right
+    motion_strength: 0.3
+    transition_in: dissolve
+
+  - slot_id: kitchen_support
+    description: Kitchen — quick support shot, island and light
+    room_type: kitchen
+    duration_sec: 3.0
+    motion: push_in
+    motion_strength: 0.35
+    transition_in: cut
+
+  - slot_id: pool_hero
+    description: Hero pool shot — wide, sparkling water, full outdoor context
+    room_type: backyard
+    duration_sec: 5.5
+    motion: pan_left
+    motion_strength: 0.3
+    transition_in: dissolve
+    fallback_to_generated: true
+    generation_prompt: >
+      Luxury swimming pool at golden hour, sparkling blue water, lounge chairs, lush greenery,
+      cinematic wide angle, 9:16
+
+  - slot_id: pool_detail
+    description: Pool detail — water surface, tile edge, or waterfall feature
+    room_type: backyard
+    duration_sec: 2.5
+    motion: slow_zoom_in
+    motion_strength: 0.55
+    transition_in: cut
+
+  - slot_id: outdoor_lounge
+    description: Outdoor living area — seating, fire pit, pergola, or dining al fresco
+    room_type: backyard
+    duration_sec: 4.0
+    motion: pan_right
+    motion_strength: 0.3
+    transition_in: dissolve
+
+  - slot_id: amenity_feature
+    description: Standout amenity — outdoor kitchen, bar, gym, tennis court, or fire pit
+    room_type: view
+    duration_sec: 3.5
+    motion: slow_zoom_out
+    motion_strength: 0.3
+    transition_in: dissolve
+    must_fill: false
+
+  - slot_id: primary_retreat
+    description: Primary bedroom — calm, light-filled, retreat feel
+    room_type: bedroom
+    duration_sec: 3.5
+    motion: slow_zoom_in
+    motion_strength: 0.28
+    transition_in: dissolve
+    text_overlay_id: feature_beds
+
+  - slot_id: closing_dusk
+    description: Closing exterior at dusk — pool lit up, home glowing, lifestyle complete
+    room_type: exterior
+    duration_sec: 5.5
+    motion: pull_out
+    motion_strength: 0.35
+    transition_in: dissolve
+    text_overlay_id: price_card
+    fallback_to_generated: true
+    generation_prompt: >
+      Luxury home at dusk, pool glowing blue, warm windows, outdoor lights on, lifestyle photography,
+      aspirational, magazine quality, 9:16
+
+audio_cues:
+  - track_query: "mood:relaxed tempo:medium"
+    kind: music
+    start_time_sec: 0.0
+    volume_db: -4.0
+    fade_in_sec: 1.0
+    fade_out_sec: 2.5
+
+text_overlays:
+  - overlay_id: address_card
+    text_template: "{{ property.address }}"
+    position: bottom_left
+    font_family: Inter
+    font_size_px: 48
+    color_hex: "#FFFFFF"
+    background_hex: "#00000066"
+    duration_sec: 3.5
+    fade_in_sec: 0.5
+    fade_out_sec: 0.5
+
+  - overlay_id: feature_beds
+    text_template: "{{ property.beds }} BD  ·  {{ property.baths }} BA  ·  {{ property.sqft }} sqft"
+    position: bottom_left
+    font_family: Inter
+    font_size_px: 40
+    color_hex: "#FFFFFF"
+    background_hex: "#00000066"
+    duration_sec: 3.0
+    fade_in_sec: 0.4
+    fade_out_sec: 0.4
+
+  - overlay_id: price_card
+    text_template: "{{ property.price }}"
+    position: center
+    font_family: Inter
+    font_size_px: 80
+    color_hex: "#FFFFFF"
+    background_hex: "#00000099"
+    duration_sec: 5.0
+    fade_in_sec: 0.8
+    fade_out_sec: 0.8

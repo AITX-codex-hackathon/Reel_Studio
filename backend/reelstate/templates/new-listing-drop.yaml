@@ -1,0 +1,127 @@
+template_id: new-listing-drop
+name: New Listing Drop
+description: >
+  30-second announcement reel built for the "just listed" moment. Opens with a bold
+  address card, delivers punchy interior hits, and ends with a full-screen stats splash.
+  Optimized for Instagram Feed, Reels, and TikTok. Energy: confident, direct, scroll-stopping.
+author: AutoHDR
+version: "1.0.0"
+
+target_duration_sec: 30.0
+aspect_ratio: "9:16"
+pacing_mode: beat
+
+global_color_grade: punchy_vivid
+
+draft_resolution_p: 540
+final_resolution_p: 1080
+draft_crf: 28
+final_crf: 20
+
+shot_slots:
+  - slot_id: listing_hook
+    description: Bold exterior — punchy front-on angle, full facade, daylight
+    room_type: exterior
+    duration_sec: 3.0
+    motion: push_in
+    motion_strength: 0.55
+    transition_in: fade
+    text_overlay_id: just_listed_card
+    fallback_to_generated: true
+    generation_prompt: >
+      Striking modern home exterior, bold front-on angle, bright daylight, punchy wide shot,
+      manicured lawn, architectural photography, 9:16
+
+  - slot_id: living_punch
+    description: Living room — wide, quick reveal, high energy
+    room_type: living_room
+    duration_sec: 2.5
+    motion: pan_right
+    motion_strength: 0.5
+    transition_in: cut
+
+  - slot_id: kitchen_punch
+    description: Kitchen — island, appliances, clean lines
+    room_type: kitchen
+    duration_sec: 2.5
+    motion: push_in
+    motion_strength: 0.5
+    transition_in: cut
+
+  - slot_id: kitchen_detail
+    description: Kitchen close — countertop, hardware, or backsplash
+    room_type: kitchen
+    duration_sec: 1.5
+    motion: slow_zoom_in
+    motion_strength: 0.6
+    transition_in: cut
+
+  - slot_id: primary_bed
+    description: Primary bedroom — clean, bright, aspirational
+    room_type: bedroom
+    duration_sec: 2.5
+    motion: pan_left
+    motion_strength: 0.45
+    transition_in: cut
+
+  - slot_id: bath_snap
+    description: Bathroom — vanity or soaking tub, luxury finish
+    room_type: bathroom
+    duration_sec: 2.0
+    motion: slow_zoom_in
+    motion_strength: 0.5
+    transition_in: cut
+    must_fill: false
+
+  - slot_id: backyard_wow
+    description: Backyard or pool — outdoor wow factor
+    room_type: backyard
+    duration_sec: 3.0
+    motion: pan_right
+    motion_strength: 0.5
+    transition_in: cut
+
+  - slot_id: closing_stats
+    description: Exterior close or living room — full-screen stats overlay
+    room_type: exterior
+    duration_sec: 4.5
+    motion: slow_zoom_out
+    motion_strength: 0.3
+    transition_in: cut
+    text_overlay_id: full_stats_card
+    fallback_to_generated: true
+    generation_prompt: >
+      Clean modern home exterior, bright daylight, wide establishing shot, 9:16
+
+audio_cues:
+  - track_query: "mood:upbeat tempo:fast"
+    kind: music
+    start_time_sec: 0.0
+    volume_db: -2.0
+    fade_in_sec: 0.0
+    fade_out_sec: 1.5
+
+text_overlays:
+  - overlay_id: just_listed_card
+    text_template: "JUST LISTED\n{{ property.address }}"
+    position: bottom_left
+    font_family: Inter
+    font_size_px: 44
+    color_hex: "#FFFFFF"
+    background_hex: "#00000088"
+    duration_sec: 2.5
+    fade_in_sec: 0.3
+    fade_out_sec: 0.3
+
+  - overlay_id: full_stats_card
+    text_template: >
+      {{ property.price }}
+      {{ property.beds }} BD  ·  {{ property.baths }} BA  ·  {{ property.sqft }} sqft
+    position: center
+    font_family: Inter
+    font_size_px: 56
+    color_hex: "#FFFFFF"
+    background_hex: "#000000BB"
+    duration_sec: 4.0
+    fade_in_sec: 0.4
+    fade_out_sec: 0.5

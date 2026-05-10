@@ -79,10 +79,30 @@ export type ResolvedShot = {
   motion: string;
   motion_strength: number;
   transition_in: string;
+  color_grade?: string | null;
   text_overlay_id?: string | null;
   rendered_text_overlay?: string | null;
   is_generated: boolean;
   source_upload_id?: string | null;
+  room_type?: string | null;
+  style_recipe_id?: string | null;
+  scene_purpose?: string | null;
+  style_notes?: string | null;
+  beat_plan?: string | null;
+  masking_plan?: string | null;
+  transition_plan?: string | null;
+  continuity_notes?: string | null;
+  rubric_plan?: Record<string, unknown> | null;
+  style_recipe_prompt?: string | null;
+};
+
+export type StoryboardCreativeBrief = {
+  concept_title: string;
+  logline: string;
+  visual_theme: string;
+  emotional_arc: string;
+  music_strategy: string;
+  continuity_rules: string[];
 };
 
 export type Storyboard = {
@@ -92,10 +112,15 @@ export type Storyboard = {
   shots: ResolvedShot[];
   audio_cues: Template["audio_cues"];
   text_overlays: Template["text_overlays"];
+  music?: ProjectMusic | null;
+  creative_brief?: StoryboardCreativeBrief | null;
   total_duration_sec: number;
   aspect_ratio: string;
   generated_slot_ids: string[];
   unfilled_slot_ids: string[];
+  selected_upload_ids?: string[];
+  rejected_upload_ids?: string[];
+  photo_selection_notes?: string;
   notes: string;
 };
 
@@ -121,9 +146,80 @@ export type AudioTrack = {
   tags: string[];
 };
 
+export type FreeMusicTrack = {
+  id: string;
+  title: string;
+  artist: string;
+  duration_sec?: number | null;
+  genre?: string | null;
+  tags: string[];
+  thumbnail_url?: string | null;
+  preview_url?: string | null;
+};
+
+export type ProjectMusic = {
+  id: string;
+  project_id: string;
+  source: string;
+  track_id: string;
+  title: string;
+  artist: string;
+  duration_sec?: number | null;
+  audio_path: string;
+  metadata_path: string;
+  timestamps_path: string;
+  cuts_dir?: string | null;
+  manifest_path: string;
+  tempo?: number | null;
+  beat_count: number;
+  beat_timestamps_ms: number[];
+  attribution: string;
+  created_at: string;
+};
+
+export type MusicInsertJob = {
+  job_id: string;
+  status: "queued" | "running" | "complete" | "failed";
+  progress: number;
+  message: string;
+  result?: ProjectMusic | null;
+  error?: string | null;
+};
+
 export type Health = {
   status: string;
   providers: Record<string, boolean>;
+};
+
+export type VideoStyle = {
+  style_id: string;
+  category: string;
+  mood: string;
+  camera_motion: string;
+  environmental_dynamics: string;
+  video_prompt: string;
+};
+
+export type WorkflowSnapshotEvent = {
+  type?: "workflow" | "render";
+  stage?: string;
+  phase?: string;
+  status?: "queued" | "running" | "succeeded" | "failed";
+  message?: string;
+  progress?: number;
+  render_id?: string;
+  pass_type?: "draft" | "final";
+  current?: number;
+  total?: number;
+  shot_id?: string;
+  error?: string;
+  created_at?: number;
+};
+
+export type WorkflowSnapshot = {
+  project_id: string;
+  connected_clients: number;
+  events: WorkflowSnapshotEvent[];
 };
 
 // ---- Endpoints ----
@@ -167,10 +263,10 @@ export const api = {
   uploadFileUrl: (uploadId: string) => `${BASE}/uploads/${uploadId}/file`,
 
   // storyboard
-  generateStoryboard: (projectId: string, templateId: string) =>
+  generateStoryboard: (projectId: string) =>
     request<Storyboard>(`/projects/${projectId}/storyboard`, {
       method: "POST",
-      body: JSON.stringify({ template_id: templateId, use_audio_for_pacing: false }),
+      body: JSON.stringify({ use_audio_for_pacing: false }),
     }),
   getStoryboard: (projectId: string) =>
     request<Storyboard | null>(`/projects/${projectId}/storyboard`),
@@ -189,7 +285,32 @@ export const api = {
     request<RenderJob[]>(`/projects/${projectId}/renders`),
   renderFileUrl: (projectId: string, renderId: string) =>
     `${BASE}/projects/${projectId}/renders/${renderId}/file`,
+  getWorkflowCurrent: (projectId: string) =>
+    request<WorkflowSnapshot>(`/projects/${projectId}/workflow/current`),
 
   // audio
   listTracks: () => request<AudioTrack[]>("/audio"),
+
+  // styles
+  listStyles: (category?: string) =>
+    request<VideoStyle[]>(`/styles${category ? `?category=${encodeURIComponent(category)}` : ""}`),
+  listStyleCategories: () => request<string[]>("/styles/categories"),
+  getStyle: (styleId: string) => request<VideoStyle>(`/styles/${styleId}`),
+
+  // Free To Use music
+  listFreeMusicTracks: (query = "", limit = 20) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (query.trim()) params.set("query", query.trim());
+    return request<FreeMusicTrack[]>(`/free-music/tracks?${params.toString()}`);
+  },
+  getCurrentMusic: (projectId: string) =>
+    request<ProjectMusic | null>(`/projects/${projectId}/music/current`),
+  insertMusic: (projectId: string, trackId: string) =>
+    request<MusicInsertJob>(`/projects/${projectId}/music/insert`, {
+      method: "POST",
+      body: JSON.stringify({ track_id: trackId, make_cuts: true, include_tail: false }),
+    }),
+  getMusicInsertJob: (projectId: string, jobId: string) =>
+    request<MusicInsertJob>(`/projects/${projectId}/music/jobs/${jobId}`),
+  projectMusicFileUrl: (projectId: string) => `${BASE}/projects/${projectId}/music/file`,
 };

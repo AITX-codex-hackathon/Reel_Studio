@@ -1,7 +1,6 @@
 """Storyboard generation + retrieval."""
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -11,12 +10,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..agents.image_analyzer import ImageAnalysisResult
+from ..agents.image_analyzer import ANALYZER_VERSION, ImageAnalysisResult
 from ..models.project import Project
-from ..models.storyboard import Storyboard
+from ..integrations.free_music import FreeMusicError, load_timestamps
+from ..models.storyboard import Storyboard, StoryboardMusic
+from ..models.template import AudioCue
 from ..services import StoryboardBuilder
-from ..storage import AnalysisRow, ProjectRow, StoryboardRow, UploadRow, get_db
+from ..storage import AnalysisRow, ProjectMusicRow, ProjectRow, StoryboardRow, UploadRow, get_db
 from ..storage.filesystem import TemplateLoader
+from .ws import broadcast_workflow_status
 
 router = APIRouter(prefix="/projects/{project_id}/storyboard", tags=["storyboards"])
 
@@ -24,7 +26,7 @@ _loader = TemplateLoader()
 
 
 class GenerateBody(BaseModel):
-    template_id: str
+    template_id: Optional[str] = None
     use_audio_for_pacing: bool = False
 
 
@@ -38,10 +40,6 @@ async def generate_storyboard(
     if not project_row:
         raise HTTPException(404, "Project not found")
 
-    template = _loader.get(body.template_id)
-    if not template:
-        raise HTTPException(404, f"Template {body.template_id} not found")
-
     upload_rows = db.query(UploadRow).filter_by(project_id=project_id).all()
     if not upload_rows:
         raise HTTPException(400, "Upload some images first")
@@ -51,7 +49,7 @@ async def generate_storyboard(
     for u in upload_rows:
         a = db.query(AnalysisRow).filter_by(upload_id=u.id).first()
         cached = None
-        if a:
+        if a and dict(a.raw or {}).get("analyzer_version") == ANALYZER_VERSION:
             cached = ImageAnalysisResult(
                 room_type=a.room_type,
                 quality_score=a.quality_score,
@@ -65,37 +63,144 @@ async def generate_storyboard(
         uploads.append((u.id, Path(u.path), cached))
 
     builder = StoryboardBuilder()
-    storyboard = await builder.build(
-        project=Project.model_validate(project_row),
-        template=template,
-        uploads=uploads,
-        audio_path_for_pacing=None,  # v1: pacing analyzed against shot music after we know it
-    )
+    music, beat_timestamps_ms = _selected_music(project_id, db)
+
+    async def telemetry(payload: dict) -> None:
+        await broadcast_workflow_status(
+            project_id,
+            stage=payload.pop("stage", "storyboard"),
+            status=payload.pop("status", "running"),
+            message=payload.pop("message", "Working on storyboard."),
+            progress=payload.pop("progress", None),
+            detail=payload,
+        )
+
+    project = Project.model_validate(project_row)
+
+    # Use template-free path when no template_id is given (default)
+    use_template = body.template_id and body.template_id != "auto"
+    if use_template:
+        template = _loader.get(body.template_id)
+        if not template:
+            raise HTTPException(404, f"Template {body.template_id} not found")
+        storyboard = await builder.build(
+            project=project,
+            template=template,
+            uploads=uploads,
+            audio_path_for_pacing=Path(music.audio_path) if music else None,
+            beat_timestamps_ms=beat_timestamps_ms,
+            music=music,
+            telemetry=telemetry,
+        )
+        template_id_to_save = template.template_id
+    else:
+        storyboard = await builder.build_from_uploads(
+            project=project,
+            uploads=uploads,
+            music=music,
+            beat_timestamps_ms=beat_timestamps_ms,
+            telemetry=telemetry,
+        )
+        template_id_to_save = "auto"
+
+    if music:
+        storyboard.audio_cues = [
+            AudioCue(
+                track_query=f"file:{music.audio_path}",
+                kind="music",
+                start_time_sec=0.0,
+                end_time_sec=storyboard.total_duration_sec,
+                volume_db=-2.0,
+                fade_in_sec=0.6,
+                fade_out_sec=1.6,
+            )
+        ]
+        storyboard.notes = (
+            f"{storyboard.notes} Beat-synced to {music.artist} - {music.title} "
+            f"using {len(beat_timestamps_ms)} stored beat timestamps."
+        ).strip()
 
     # Persist any newly computed analyses
-    for upload_id, _, _ in uploads:
+    for upload_id, analysis in builder.last_analyses_by_upload_id.items():
         existing = db.query(AnalysisRow).filter_by(upload_id=upload_id).first()
         if existing:
+            existing.room_type = analysis.room_type
+            existing.quality_score = analysis.quality_score
+            existing.framing = analysis.framing
+            existing.lighting = analysis.lighting
+            existing.dominant_colors = analysis.dominant_colors
+            existing.suggested_motion = analysis.suggested_motion
+            existing.notes = analysis.notes
+            existing.raw = analysis.raw
             continue
-        # match the upload back to the analyzer output via builder cache?
-        # builder doesn't expose it; cheaper to skip caching here and let
-        # next run hit the analyzer again. Optional: add a writer hook.
+        db.add(
+            AnalysisRow(
+                id=str(uuid.uuid4()),
+                upload_id=upload_id,
+                room_type=analysis.room_type,
+                quality_score=analysis.quality_score,
+                framing=analysis.framing,
+                lighting=analysis.lighting,
+                dominant_colors=analysis.dominant_colors,
+                suggested_motion=analysis.suggested_motion,
+                notes=analysis.notes,
+                raw=analysis.raw,
+                created_at=datetime.utcnow(),
+            )
+        )
 
     # Save storyboard
     sb_row = StoryboardRow(
         id=storyboard.storyboard_id,
         project_id=project_id,
-        template_id=template.template_id,
+        template_id=template_id_to_save,
         json=storyboard.model_dump(mode="json"),
         created_at=datetime.utcnow(),
     )
     db.add(sb_row)
-    project_row.template_id = template.template_id
+    project_row.template_id = template_id_to_save
     project_row.storyboard_id = storyboard.storyboard_id
     project_row.updated_at = datetime.utcnow()
     db.commit()
 
     return storyboard
+
+
+def _selected_music(project_id: str, db: Session) -> tuple[Optional[StoryboardMusic], list[int]]:
+    row = (
+        db.query(ProjectMusicRow)
+        .filter_by(project_id=project_id)
+        .order_by(ProjectMusicRow.created_at.desc())
+        .first()
+    )
+    if not row:
+        return None, []
+
+    beat_timestamps: list[int] = []
+    timestamps_path = Path(row.timestamps_path)
+    if timestamps_path.exists():
+        try:
+            beat_timestamps = load_timestamps(timestamps_path)
+        except FreeMusicError:
+            beat_timestamps = []
+
+    return (
+        StoryboardMusic(
+            source=row.source,
+            track_id=row.track_id,
+            title=row.title,
+            artist=row.artist,
+            audio_path=row.audio_path,
+            timestamps_path=row.timestamps_path,
+            manifest_path=row.manifest_path,
+            cuts_dir=row.cuts_dir,
+            tempo=row.tempo,
+            beat_count=row.beat_count,
+            beat_timestamps_ms=beat_timestamps,
+            attribution=row.attribution,
+        ),
+        beat_timestamps,
+    )
 
 
 @router.get("", response_model=Optional[Storyboard])

@@ -6,6 +6,7 @@ from .db import (
     ProjectRow,
     UploadRow,
     AnalysisRow,
+    ProjectMusicRow,
     RenderRow,
     StoryboardRow,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "ProjectRow",
     "UploadRow",
     "AnalysisRow",
+    "ProjectMusicRow",
     "RenderRow",
     "StoryboardRow",
     "ProjectFiles",

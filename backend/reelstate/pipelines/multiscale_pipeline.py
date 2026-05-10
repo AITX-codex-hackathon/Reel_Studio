@@ -32,7 +32,7 @@ class MultiPassRenderer:
     async def draft(
         self,
         storyboard: Storyboard,
-        template: Template,
+        template: Optional[Template],
         output_path: Path,
         scratch_dir: Optional[Path] = None,
     ) -> AsyncIterator[RenderProgress]:
@@ -45,7 +45,7 @@ class MultiPassRenderer:
             storyboard=storyboard,
             config=config,
             output_path=output_path,
-            global_color_grade=template.global_color_grade,
+            global_color_grade=template.global_color_grade if template else None,
             scratch_dir=scratch_dir,
         ):
             yield p
@@ -53,7 +53,7 @@ class MultiPassRenderer:
     async def final(
         self,
         storyboard: Storyboard,
-        template: Template,
+        template: Optional[Template],
         output_path: Path,
         scratch_dir: Optional[Path] = None,
     ) -> AsyncIterator[RenderProgress]:
@@ -66,7 +66,7 @@ class MultiPassRenderer:
             storyboard=storyboard,
             config=config,
             output_path=output_path,
-            global_color_grade=template.global_color_grade,
+            global_color_grade=template.global_color_grade if template else None,
             scratch_dir=scratch_dir,
         ):
             yield p
@@ -74,7 +74,7 @@ class MultiPassRenderer:
     def _config_for_pass(
         self,
         storyboard: Storyboard,
-        template: Template,
+        template: Optional[Template],
         pass_type: RenderPass,
     ) -> RenderConfig:
         # Pick aspect ratio from storyboard (same in both passes)
@@ -82,13 +82,13 @@ class MultiPassRenderer:
         ar = {"9:16": AspectRatio.REEL_9_16, "1:1": AspectRatio.SQUARE_1_1, "16:9": AspectRatio.WIDE_16_9}.get(ar_str, AspectRatio.REEL_9_16)
 
         if pass_type == RenderPass.DRAFT:
-            v_res = template.draft_resolution_p
-            crf = template.draft_crf
+            v_res = template.draft_resolution_p if template else 540
+            crf = template.draft_crf if template else 28
             preset = "ultrafast"
             watermark = True
         else:
-            v_res = template.final_resolution_p
-            crf = template.final_crf
+            v_res = template.final_resolution_p if template else 1080
+            crf = template.final_crf if template else 22
             preset = "medium"
             watermark = False
 

@@ -1,19 +1,43 @@
-// WebSocket client for render progress.
+// WebSocket client for project workflow progress.
 
 export type ProgressMessage = {
+  type?: "render" | "workflow";
   render_id: string;
   pass_type: "draft" | "final";
   progress?: number;
   seconds_done?: number;
   fps?: number;
-  status?: "succeeded" | "failed";
+  status?: "queued" | "running" | "succeeded" | "failed";
+  stage?: string;
+  phase?: string;
+  message?: string;
+  current?: number;
+  total?: number;
+  shot_id?: string;
   output_url?: string;
   error?: string;
 };
 
+export type WorkflowMessage = {
+  type?: "workflow" | "render";
+  stage?: string;
+  phase?: string;
+  status?: "queued" | "running" | "succeeded" | "failed";
+  message?: string;
+  progress?: number;
+  render_id?: string;
+  pass_type?: "draft" | "final";
+  current?: number;
+  total?: number;
+  shot_id?: string;
+  error?: string;
+  created_at?: number;
+};
+
 export function connectProgressWS(
   projectId: string,
-  onMessage: (m: ProgressMessage) => void,
+  onMessage: (m: WorkflowMessage) => void,
+  onOpen?: () => void,
 ): () => void {
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
   const url = apiBase.replace(/^http/, "ws") + `/ws/projects/${projectId}/progress`;
@@ -23,6 +47,9 @@ export function connectProgressWS(
 
   const open = () => {
     ws = new WebSocket(url);
+    ws.onopen = () => {
+      onOpen?.();
+    };
     ws.onmessage = (ev) => {
       try {
         onMessage(JSON.parse(ev.data));

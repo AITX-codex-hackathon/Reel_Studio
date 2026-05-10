@@ -1,8 +1,4 @@
-"""Storyboard — resolved template + shots, ready to render.
-
-Analogous to LTX-Video's patchifier output: takes a template (config) and the
-user's image set, then produces an ordered, timed sequence ready for the renderer.
-"""
+"""Storyboard — resolved shots ready to render."""
 from __future__ import annotations
 
 from typing import Optional
@@ -14,31 +10,60 @@ from .template import AudioCue, TextOverlaySpec
 
 
 class ResolvedShot(Shot):
-    """Same as Shot but with the rendered text content baked in (after Jinja eval)."""
+    """Shot with rendered text content baked in."""
     rendered_text_overlay: Optional[str] = None
+
+
+class StoryboardMusic(BaseModel):
+    source: str
+    track_id: str
+    title: str
+    artist: str
+    audio_path: str
+    timestamps_path: str
+    manifest_path: str
+    cuts_dir: Optional[str] = None
+    tempo: Optional[float] = None
+    beat_count: int = 0
+    beat_timestamps_ms: list[int] = Field(default_factory=list)
+    attribution: str
+
+
+class StoryboardCreativeBrief(BaseModel):
+    concept_title: str = ""
+    logline: str = ""
+    visual_theme: str = ""
+    emotional_arc: str = ""
+    music_strategy: str = ""
+    continuity_rules: list[str] = Field(default_factory=list)
 
 
 class Storyboard(BaseModel):
     storyboard_id: str
     project_id: str
-    template_id: str
+    template_id: str = "auto"
 
     shots: list[ResolvedShot]
     audio_cues: list[AudioCue]
     text_overlays: list[TextOverlaySpec]
+    music: Optional[StoryboardMusic] = None
+    creative_brief: Optional[StoryboardCreativeBrief] = None
 
     total_duration_sec: float = Field(..., gt=0)
     aspect_ratio: str
 
-    # Per-shot annotation: which slots fell back to generation
-    generated_slot_ids: list[str] = Field(default_factory=list)
-    # Per-shot annotation: which slots couldn't be filled at all
-    unfilled_slot_ids: list[str] = Field(default_factory=list)
+    # Beat timestamps from beat-analysis module (populated externally when ready)
+    beat_timestamps: list[float] = Field(default_factory=list)
 
-    notes: str = Field(
-        "",
-        description="Human-readable notes from the agent (which images went where, why fallbacks fired)",
-    )
+    # Pixabay or local music track
+    music_url: Optional[str] = None
+
+    generated_slot_ids: list[str] = Field(default_factory=list)
+    unfilled_slot_ids: list[str] = Field(default_factory=list)
+    selected_upload_ids: list[str] = Field(default_factory=list)
+    rejected_upload_ids: list[str] = Field(default_factory=list)
+    photo_selection_notes: str = ""
+    notes: str = ""
 
     @property
     def shot_count(self) -> int:

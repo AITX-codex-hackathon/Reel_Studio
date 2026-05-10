@@ -15,6 +15,11 @@ class RenderProgress:
     seconds_done: float
     fps: float
     log_line: str = ""
+    phase: str = "encoding"
+    message: str = ""
+    current: int | None = None
+    total: int | None = None
+    shot_id: str | None = None
 
 
 # ffmpeg with `-stats` writes lines like:
