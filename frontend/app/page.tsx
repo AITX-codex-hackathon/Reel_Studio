@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, type Health, type Project } from "@/lib/api";
-import { NewReelButton } from "@/components/auth/NewReelButton";
 
 const SHOWCASE_IMAGES = [
   "/demo/living-room.jpg",
