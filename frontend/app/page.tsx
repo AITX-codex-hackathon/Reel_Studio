@@ -165,7 +165,7 @@ export default function DashboardPage() {
                   Create your first project — the whole flow takes about 2 minutes.
                 </p>
                 <NewReelButton>
-                  <Wand2 className="w-4 h-4" /> Create your first project
+                  Create your first project
                 </NewReelButton>
               </CardContent>
             </Card>

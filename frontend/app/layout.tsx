@@ -77,16 +77,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           />
           <header className="sticky top-0 z-40 glass">
             <div className="mx-auto max-w-7xl px-6 h-16 flex items-center justify-between">
-              <Link href="/" className="flex items-center gap-2.5 group">
-                <div className="w-9 h-9 rounded-xl bg-gradient-brand flex items-center justify-center shadow-brand-soft group-hover:scale-105 transition-transform">
-                  <Sparkles className="w-4.5 h-4.5 text-white" strokeWidth={2.5} />
-                </div>
-                <div className="flex flex-col leading-tight">
-                  <span className="font-display font-bold text-white tracking-tight text-lg">
+              <Link href="/" className="flex items-center group relative">
+                <img
+                  src="/logo_transparent_fallback.png"
+                  alt="ReelStudio Logo"
+                  className="w-28 h-28 object-contain group-hover:scale-105 transition-transform mt-4"
+                />
+                <div className="flex flex-col leading-tight -ml-6 z-10">
+                  <span className="font-display font-bold text-white tracking-tight text-xl drop-shadow-md">
                     ReelStudio
-                  </span>
-                  <span className="text-[10px] text-ink-subtle uppercase tracking-wider -mt-0.5">
-                    AI Project Studio
                   </span>
                 </div>
               </Link>
