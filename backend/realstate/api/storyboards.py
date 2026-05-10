@@ -26,7 +26,7 @@ _loader = TemplateLoader()
 
 
 class GenerateBody(BaseModel):
-    template_id: str
+    template_id: Optional[str] = None
     use_audio_for_pacing: bool = False
 
 
@@ -39,10 +39,6 @@ async def generate_storyboard(
     project_row = db.get(ProjectRow, project_id)
     if not project_row:
         raise HTTPException(404, "Project not found")
-
-    template = _loader.get(body.template_id)
-    if not template:
-        raise HTTPException(404, f"Template {body.template_id} not found")
 
     upload_rows = db.query(UploadRow).filter_by(project_id=project_id).all()
     if not upload_rows:
@@ -79,15 +75,34 @@ async def generate_storyboard(
             detail=payload,
         )
 
-    storyboard = await builder.build(
-        project=Project.model_validate(project_row),
-        template=template,
-        uploads=uploads,
-        audio_path_for_pacing=Path(music.audio_path) if music else None,
-        beat_timestamps_ms=beat_timestamps_ms,
-        music=music,
-        telemetry=telemetry,
-    )
+    project = Project.model_validate(project_row)
+
+    # Use template-free path when no template_id is given (default)
+    use_template = body.template_id and body.template_id != "auto"
+    if use_template:
+        template = _loader.get(body.template_id)
+        if not template:
+            raise HTTPException(404, f"Template {body.template_id} not found")
+        storyboard = await builder.build(
+            project=project,
+            template=template,
+            uploads=uploads,
+            audio_path_for_pacing=Path(music.audio_path) if music else None,
+            beat_timestamps_ms=beat_timestamps_ms,
+            music=music,
+            telemetry=telemetry,
+        )
+        template_id_to_save = template.template_id
+    else:
+        storyboard = await builder.build_from_uploads(
+            project=project,
+            uploads=uploads,
+            music=music,
+            beat_timestamps_ms=beat_timestamps_ms,
+            telemetry=telemetry,
+        )
+        template_id_to_save = "auto"
+
     if music:
         storyboard.audio_cues = [
             AudioCue(
@@ -105,7 +120,7 @@ async def generate_storyboard(
             f"using {len(beat_timestamps_ms)} stored beat timestamps."
         ).strip()
 
-    # Persist any newly computed analyses so later storyboard attempts are fast.
+    # Persist any newly computed analyses
     for upload_id, analysis in builder.last_analyses_by_upload_id.items():
         existing = db.query(AnalysisRow).filter_by(upload_id=upload_id).first()
         if existing:
@@ -138,12 +153,12 @@ async def generate_storyboard(
     sb_row = StoryboardRow(
         id=storyboard.storyboard_id,
         project_id=project_id,
-        template_id=template.template_id,
+        template_id=template_id_to_save,
         json=storyboard.model_dump(mode="json"),
         created_at=datetime.utcnow(),
     )
     db.add(sb_row)
-    project_row.template_id = template.template_id
+    project_row.template_id = template_id_to_save
     project_row.storyboard_id = storyboard.storyboard_id
     project_row.updated_at = datetime.utcnow()
     db.commit()

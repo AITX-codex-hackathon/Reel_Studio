@@ -9,8 +9,9 @@ from typing import Any, Awaitable, Callable, Optional
 
 from .agents.image_analyzer import ImageAnalyzer, ImageAnalysisResult
 from .agents.shot_matcher import AnalyzedUpload, ShotMatcher
-from .data.style_recipes import get_cinematic_for_room
+from .data.style_recipes import ROOM_ORDER, get_cinematic_for_room, get_for_room
 from .models.project import Project
+from .models.shot import MotionPreset, TransitionType
 from .models.storyboard import ResolvedShot, Storyboard, StoryboardMusic
 from .models.template import Template
 from .schedulers.pacing import PacingScheduler
@@ -178,6 +179,118 @@ class StoryboardBuilder:
             generated_slot_ids=[s.slot_id for s in shots if s.is_generated],
             unfilled_slot_ids=list(match.unfilled),
             notes=match.notes,
+        )
+
+    async def build_from_uploads(
+        self,
+        project: Project,
+        uploads: list[tuple[str, Path, Optional[ImageAnalysisResult]]],
+        music: Optional[StoryboardMusic] = None,
+        beat_timestamps_ms: Optional[list[int]] = None,
+        telemetry: Optional[TelemetryCallback] = None,
+    ) -> Storyboard:
+        await _emit(
+            telemetry,
+            stage="storyboard",
+            message=f"Analyzing {len(uploads)} photo{'s' if len(uploads) != 1 else ''} for room type and cinematic quality.",
+            progress=0.08,
+        )
+        analyzed = await self._analyze_uploads(uploads, telemetry=telemetry)
+
+        # Sort by house-tour room order, then by quality score descending
+        analyzed.sort(key=lambda u: (
+            ROOM_ORDER.get(u.analysis.room_type or "", 99),
+            -u.analysis.quality_score,
+        ))
+
+        shots_planned = list(analyzed)
+
+        # Strategic closing exterior repeat: if best exterior isn't last, add it as the outro
+        exteriors = [u for u in analyzed if (u.analysis.room_type or "").startswith("exterior")]
+        if len(shots_planned) >= 3 and exteriors:
+            best_exterior = max(exteriors, key=lambda u: u.analysis.quality_score)
+            if shots_planned[-1].upload_id != best_exterior.upload_id:
+                shots_planned.append(best_exterior)
+
+        music_context = _music_context(music, beat_timestamps_ms)
+
+        await _emit(
+            telemetry,
+            stage="storyboard",
+            message=f"Writing cinematic style for {len(shots_planned)} shots in house-tour order.",
+            progress=0.78,
+        )
+
+        shots: list[ResolvedShot] = []
+        cursor = 0.0
+        for index, upload in enumerate(shots_planned):
+            analysis = upload.analysis
+            room_type = analysis.room_type or "detail"
+            recipe = get_cinematic_for_room(room_type, seed=index)
+            duration_sec = _clip_duration(_CLIP_DURATION_SEC)
+
+            motion_str = analysis.suggested_motion or "static"
+            valid_motions = {m.value for m in MotionPreset}
+            motion = MotionPreset(motion_str) if motion_str in valid_motions else MotionPreset.STATIC
+            transition = TransitionType.CUT if index == 0 else TransitionType.DISSOLVE
+
+            style_recipe_prompt = _style_recipe_prompt(
+                project=project,
+                slot_description=f"Cinematic {room_type.replace('_', ' ')} shot",
+                room_type=room_type,
+                recipe=recipe,
+                style_notes="",
+                music_context=music_context,
+                has_source_image=True,
+            )
+
+            shots.append(
+                ResolvedShot(
+                    slot_id=f"shot_{index + 1}",
+                    image_path=str(upload.image_path),
+                    start_time_sec=cursor,
+                    duration_sec=duration_sec,
+                    motion=motion,
+                    motion_strength=0.5,
+                    transition_in=transition,
+                    color_grade=None,
+                    text_overlay_id=None,
+                    rendered_text_overlay=None,
+                    is_generated=False,
+                    source_upload_id=upload.upload_id,
+                    room_type=room_type,
+                    style_recipe_id=recipe.style_id if recipe else None,
+                    style_notes=None,
+                    style_recipe_prompt=style_recipe_prompt,
+                )
+            )
+            cursor += duration_sec
+
+        total = cursor if shots else 30.0
+        closing_note = " Closing exterior repeat added." if len(shots_planned) > len(analyzed) else ""
+
+        await _emit(
+            telemetry,
+            stage="storyboard",
+            message=f"Storyboard ready: {len(shots)} shots, {total:.1f}s total.{closing_note}",
+            status="succeeded",
+            progress=1.0,
+        )
+
+        return Storyboard(
+            storyboard_id=str(uuid.uuid4()),
+            project_id=project.id,
+            template_id="auto",
+            shots=shots,
+            audio_cues=[],
+            text_overlays=[],
+            music=music,
+            total_duration_sec=total,
+            aspect_ratio="9:16",
+            beat_timestamps=[ms / 1000 for ms in (beat_timestamps_ms or [])],
+            generated_slot_ids=[],
+            unfilled_slot_ids=[],
+            notes=f"{len(shots)} shots in house-tour order.{closing_note}",
         )
 
     async def _analyze_uploads(

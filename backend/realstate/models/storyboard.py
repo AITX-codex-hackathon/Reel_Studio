@@ -32,7 +32,7 @@ class StoryboardMusic(BaseModel):
 class Storyboard(BaseModel):
     storyboard_id: str
     project_id: str
-    template_id: str
+    template_id: str = "auto"
 
     shots: list[ResolvedShot]
     audio_cues: list[AudioCue]
