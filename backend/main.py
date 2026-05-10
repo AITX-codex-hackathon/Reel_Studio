@@ -64,7 +64,7 @@ def health() -> dict:
         "providers": {
             "openai": bool(settings.openai_api_key),
             "fal": bool(settings.fal_key),
-            "google_nano_banana": bool(settings.google_api_key),
+            "gemini_nano_banana": bool(settings.gemini_api_key),
             "runway": bool(settings.runway_api_key),
             "elevenlabs": bool(settings.elevenlabs_api_key),
         },
