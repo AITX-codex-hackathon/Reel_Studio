@@ -18,6 +18,8 @@ dist/
 .turbo/
 *.tsbuildinfo
 
+backend/main
+
 # Env
 .env
 .env.local

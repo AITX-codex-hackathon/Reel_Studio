@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
-PYTHON="$ROOT_DIR/venv/bin/python"
+PYTHON="${PYTHON:-$ROOT_DIR/backend/main/bin/python}"
 
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
@@ -45,10 +45,10 @@ is_running_job() {
 trap cleanup EXIT INT TERM
 
 if [[ ! -x "$PYTHON" ]]; then
-  echo "Could not find the project venv at $ROOT_DIR/venv."
-  echo "Create it first, then install backend dependencies:"
-  echo "  /opt/homebrew/bin/python3.11 -m venv venv"
-  echo "  venv/bin/python -m pip install './backend[audio,dev]'"
+  echo "Could not find a Python interpreter at $PYTHON."
+  echo "Either set PYTHON=/path/to/venv/bin/python, or create the default venv:"
+  echo "  python3 -m venv backend/main"
+  echo "  backend/main/bin/python -m pip install './backend[audio,dev]'"
   exit 1
 fi
 

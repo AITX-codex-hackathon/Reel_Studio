@@ -179,7 +179,7 @@ export function MusicBrowser({ projectId, currentMusic, onInserted }: MusicBrows
       </div>
 
       {currentMusic && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <div className="rounded-lg border border-emerald-800/40 bg-emerald-900/20 px-4 py-3 text-sm text-emerald-300">
           <div className="flex flex-wrap items-center gap-2">
             <Check className="h-4 w-4" />
             <span className="font-medium">
@@ -192,9 +192,9 @@ export function MusicBrowser({ projectId, currentMusic, onInserted }: MusicBrows
       )}
 
       {job && (
-        <div className="rounded-lg border border-border bg-white px-4 py-3">
+        <div className="rounded-lg border border-white/[0.06] bg-[#14141f] px-4 py-3">
           <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="font-medium text-ink">{progressText}</span>
+            <span className="font-medium text-white">{progressText}</span>
             <span className="text-ink-muted">{Math.round(job.progress * 100)}%</span>
           </div>
           <Progress value={job.progress * 100} />
@@ -202,12 +202,12 @@ export function MusicBrowser({ projectId, currentMusic, onInserted }: MusicBrows
       )}
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-red-800/40 bg-red-900/20 px-4 py-3 text-sm text-red-300">
           {error}
         </div>
       )}
 
-      <div className="max-h-[440px] overflow-y-auto rounded-lg border border-border">
+      <div className="max-h-[440px] overflow-y-auto rounded-lg border border-white/[0.06] bg-[#14141f]">
         {loading && tracks.length === 0 ? (
           <div className="flex h-40 items-center justify-center text-ink-muted">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -218,7 +218,7 @@ export function MusicBrowser({ projectId, currentMusic, onInserted }: MusicBrows
             No suitable tracks found.
           </div>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="divide-y divide-white/[0.06]">
             {tracks.map((track) => {
               const selected = selectedTrack?.id === track.id || activeTrackId === track.id;
               const playing = playingId === track.id;
@@ -237,10 +237,12 @@ export function MusicBrowser({ projectId, currentMusic, onInserted }: MusicBrows
                   }}
                   className={cn(
                     "grid w-full cursor-pointer grid-cols-[56px_1fr_auto] items-center gap-3 px-4 py-3 text-left transition-colors",
-                    selected ? "bg-primary-50" : "bg-white hover:bg-primary-50/60",
+                    selected
+                      ? "bg-primary-100/60 ring-1 ring-inset ring-primary-400/40"
+                      : "hover:bg-white/[0.04]",
                   )}
                 >
-                  <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-md bg-primary-100">
+                  <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-md bg-white/[0.04] border border-white/[0.06]">
                     {track.thumbnail_url ? (
                       <img
                         src={track.thumbnail_url}
@@ -248,13 +250,13 @@ export function MusicBrowser({ projectId, currentMusic, onInserted }: MusicBrows
                         className="h-full w-full object-cover"
                       />
                     ) : (
-                      <Music2 className="h-5 w-5 text-primary-700" />
+                      <Music2 className="h-5 w-5 text-primary-400" />
                     )}
                   </div>
 
                   <div className="min-w-0">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span className="truncate font-medium text-ink">{track.title}</span>
+                      <span className="truncate font-medium text-white">{track.title}</span>
                       {selected && <Badge variant="default">Selected</Badge>}
                     </div>
                     <div className="mt-0.5 truncate text-sm text-ink-muted">{track.artist}</div>
