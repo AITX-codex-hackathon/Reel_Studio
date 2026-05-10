@@ -44,6 +44,31 @@ ROOM_TO_CATEGORY: dict[str, str] = {
 }
 
 _DEFAULT_CATEGORY = "Dolly Interior"
+_AVOID_STYLE_TERMS = (
+    "aggressive",
+    "action",
+    "fast",
+    "fpv",
+    "high-energy",
+    "rapid",
+    "whip",
+    "dive",
+    "intense",
+)
+_PREFERRED_STYLE_TERMS = (
+    "architectural",
+    "calm",
+    "cinematic",
+    "establishing",
+    "golden",
+    "high-end",
+    "luxury",
+    "modern",
+    "moody",
+    "smooth",
+    "symmetrical",
+    "twilight",
+)
 
 
 @dataclass
@@ -94,5 +119,31 @@ def get_for_room(room_type: Optional[str], seed: Optional[int] = None) -> Option
     return random.Random(seed).choice(pool)
 
 
+def get_cinematic_for_room(room_type: Optional[str], seed: Optional[int] = None) -> Optional[StyleRecipe]:
+    """Pick a calm commercial recipe, avoiding hype/action-heavy camera language."""
+    category = ROOM_TO_CATEGORY.get(room_type or "", _DEFAULT_CATEGORY)
+    pool = by_category(category) or _load_all()
+    if not pool:
+        return None
+
+    filtered = [recipe for recipe in pool if not _has_any(recipe, _AVOID_STYLE_TERMS)]
+    preferred = [recipe for recipe in filtered if _has_any(recipe, _PREFERRED_STYLE_TERMS)]
+    final_pool = preferred or filtered or pool
+    return random.Random(seed).choice(final_pool)
+
+
 def get_by_id(style_id: str) -> Optional[StyleRecipe]:
     return next((r for r in _load_all() if r.style_id == style_id), None)
+
+
+def _has_any(recipe: StyleRecipe, terms: tuple[str, ...]) -> bool:
+    text = " ".join(
+        [
+            recipe.category,
+            recipe.mood,
+            recipe.camera_motion,
+            recipe.environmental_dynamics,
+            recipe.video_prompt,
+        ]
+    ).lower()
+    return any(term in text for term in terms)

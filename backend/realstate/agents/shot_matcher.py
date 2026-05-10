@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -49,6 +50,7 @@ class ShotMatcher:
     def __init__(self, llm: Optional[OpenAIClient] = None, max_reuse: int = 1):
         self.llm = llm or OpenAIClient()
         self.max_reuse = max_reuse
+        self.storyboard_model = os.getenv("OPENAI_STORYBOARD_MODEL") or os.getenv("OPENAI_MODEL")
 
     async def match(
         self,
@@ -83,7 +85,8 @@ class ShotMatcher:
             for up in uploads:
                 scores[(slot.slot_id, up.upload_id)] = self._score(slot, up)
 
-        # Greedy assignment: for each slot in order, pick best unused upload
+        # Greedy assignment: for each slot in order, pick the best upload. When the
+        # upload set is small, reuse real photos instead of creating fake rooms.
         usage: dict[str, int] = {u.upload_id: 0 for u in uploads}
         assignments: dict[str, Optional[str]] = {}
         max_reuse = self._effective_max_reuse(len(uploads), len(template.shot_slots))
@@ -96,8 +99,9 @@ class ShotMatcher:
                 if s > best[0]:
                     best = (s, up.upload_id)
 
-            # Threshold: a score below 0.15 means "doesn't fit" — leave unassigned
-            if best[1] is not None and best[0] >= 0.15:
+            # Prefer fit, but do not generate missing rooms just because the
+            # uploaded set is sparse. Reuse the strongest real anchor.
+            if best[1] is not None and (best[0] >= 0.15 or slot.must_fill):
                 assignments[slot.slot_id] = best[1]
                 usage[best[1]] += 1
             else:
@@ -118,7 +122,7 @@ class ShotMatcher:
             f"Need generation: {len(needs_gen)}. Unfilled (no fallback): {len(unfilled)}."
         )
         if len(uploads) <= 2:
-            notes += " Low-image fallback active: uploaded photos are anchors and missing slots are generated."
+            notes += " Low-image fallback active: uploaded photos are reused as grounded anchors."
         return MatchResult(
             assignments=assignments,
             needs_generation=needs_gen,
@@ -168,6 +172,11 @@ class ShotMatcher:
                     "framing": upload.analysis.framing,
                     "lighting": upload.analysis.lighting,
                     "suggested_motion": upload.analysis.suggested_motion,
+                    "confidence": upload.analysis.raw.get("confidence"),
+                    "secondary_room_types": upload.analysis.raw.get("secondary_room_types", []),
+                    "usable_as": upload.analysis.raw.get("usable_as", []),
+                    "cinematic_strengths": upload.analysis.raw.get("cinematic_strengths", []),
+                    "defects": upload.analysis.raw.get("defects", []),
                     "notes": upload.analysis.notes,
                 }
                 for upload in uploads
@@ -175,20 +184,34 @@ class ShotMatcher:
             "heuristic_assignments": fallback.assignments,
             "allowed_motion": [motion.value for motion in MotionPreset],
             "allowed_transitions": [transition.value for transition in TransitionType],
+            "hard_rules": [
+                "Storyboard must be grounded in the actual uploaded photos.",
+                "Do not invent missing rooms at storyboard time when at least one upload exists.",
+                "Use null only when there are no usable uploads at all for a required generated slot.",
+                "If a slot's requested room is absent, reuse the best real upload as a cinematic bridge/detail shot.",
+                "Style notes must tell FAL how to move the camera while preserving the source image geometry.",
+            ],
         }
         system = (
             "You are the senior editor agent for an AI real-estate reel maker. "
-            "You replace a human editor by deciding story order, shot-to-photo assignment, "
-            "where generative fallback is needed, camera motion, transition style, and pacing feel. "
-            "Use OpenAI reasoning to make a calm commercial cinematic listing reel from static images. "
-            "Return only valid JSON."
+            "You replace a human editor and cinematographer by deciding story order, shot-to-photo "
+            "assignment, camera movement, transition grammar, beat feel, and per-shot visual direction. "
+            "The work must feel like a premium commercial listing film: cinematic, dramatic, polished, "
+            "spacious, soothing, and expensive. Stay grounded in the actual uploaded images. Never fake "
+            "a room just because the template mentions it; if the room is missing, reuse a real upload "
+            "as an honest bridge, exterior, detail, or atmosphere shot. Return only valid JSON."
         )
         user = (
             "Create an editor plan from this JSON. For each slot_id, assign either an upload_id or null. "
-            "Use null when fal.ai should generate a missing angle/detail/reveal shot. If there are only "
-            "1 or 2 uploaded photos, reuse the best uploads sparingly as anchors and generate the rest. "
-            "Choose a slot_order that tells a coherent real-estate story. Avoid chaotic transitions. "
-            "Style should feel commercial, dramatic, polished, and soothing.\n\n"
+            "If there is at least one uploaded photo, avoid null and reuse real uploads as anchors, even "
+            "when the template asks for a room type that is absent. Use null only as a last resort. "
+            "Choose a slot_order that tells a coherent property story from what actually exists. "
+            "Avoid chaotic transitions, hype music-video language, and aggressive camera moves.\n\n"
+            "For style_overrides, be extremely descriptive. Each style_notes value should be 2-4 dense "
+            "sentences of cinematography direction for FAL: camera height, lens feel, movement path, "
+            "foreground/background parallax, lighting behavior, atmosphere, transition intention, beat "
+            "relationship, and what must remain unchanged from the source photo. Use calm commercial "
+            "luxury language, not generic words like 'nice' or 'cinematic shot'.\n\n"
             "Return exactly this JSON shape:\n"
             "{\n"
             '  "assignments": {"slot_id": "upload_id_or_null"},\n'
@@ -206,7 +229,7 @@ class ShotMatcher:
             "}\n\n"
             f"{json.dumps(payload, indent=2, default=str)}"
         )
-        text = await self.llm.message(system=system, user=user, max_tokens=4096)
+        text = await self.llm.message(system=system, user=user, max_tokens=4096, model=self.storyboard_model)
         data = _extract_json_object(text)
 
         assignments = dict(fallback.assignments)
@@ -214,6 +237,8 @@ class ShotMatcher:
             if slot_id not in slot_ids:
                 continue
             assignments[slot_id] = upload_id if upload_id in upload_ids else None
+        if uploads:
+            assignments = self._ensure_real_uploads(template, uploads, assignments)
 
         slot_order = [slot_id for slot_id in data.get("slot_order") or [] if slot_id in slot_ids]
         for slot in template.shot_slots:
@@ -236,7 +261,7 @@ class ShotMatcher:
             if override.get("color_grade") is not None:
                 cleaned["color_grade"] = str(override.get("color_grade"))
             if override.get("style_notes"):
-                cleaned["style_notes"] = str(override["style_notes"])[:500]
+                cleaned["style_notes"] = str(override["style_notes"])[:1200]
             if cleaned:
                 style_overrides[slot_id] = cleaned
 
@@ -259,12 +284,26 @@ class ShotMatcher:
         if upload_count <= 0:
             return 0
         if upload_count == 1:
-            return min(4, slot_count)
+            return slot_count
         if upload_count == 2:
-            return min(3, max(1, slot_count // upload_count))
-        if upload_count < max(4, slot_count // 2):
-            return 2
+            return max(1, (slot_count + upload_count - 1) // upload_count)
+        if upload_count < slot_count:
+            return max(2, (slot_count + upload_count - 1) // upload_count)
         return self.max_reuse
+
+    def _ensure_real_uploads(
+        self,
+        template: Template,
+        uploads: list[AnalyzedUpload],
+        assignments: dict[str, Optional[str]],
+    ) -> dict[str, Optional[str]]:
+        """Replace null required slots with the best real upload to avoid hallucinated filler."""
+        out = dict(assignments)
+        for slot in template.shot_slots:
+            if not slot.must_fill or out.get(slot.slot_id):
+                continue
+            out[slot.slot_id] = max(uploads, key=lambda upload: self._score(slot, upload)).upload_id
+        return out
 
     def _classify_unassigned(
         self,
@@ -293,6 +332,9 @@ class ShotMatcher:
             near = _NEAR_ROOMS.get(slot.room_type, set())
             if up.analysis.room_type in near:
                 score += 0.25
+            secondary = set(up.analysis.raw.get("secondary_room_types") or [])
+            if slot.room_type in secondary:
+                score += 0.25
 
         # Framing alignment from description heuristics
         desc_l = slot.description.lower()
@@ -306,7 +348,15 @@ class ShotMatcher:
         # Quality always counts
         score += 0.30 * up.analysis.quality_score
 
-        return min(1.0, score)
+        usable_as = set(up.analysis.raw.get("usable_as") or [])
+        if "hero" in desc_l and "hero" in usable_as:
+            score += 0.10
+        if any(k in desc_l for k in ("closing", "final", "end")) and "closing" in usable_as:
+            score += 0.10
+        if up.analysis.raw.get("defects"):
+            score -= min(0.12, 0.03 * len(up.analysis.raw.get("defects") or []))
+
+        return max(0.0, min(1.0, score))
 
 
 # Soft adjacencies — close-enough rooms when exact match fails

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..agents.image_analyzer import ImageAnalysisResult
+from ..agents.image_analyzer import ANALYZER_VERSION, ImageAnalysisResult
 from ..models.project import Project
 from ..integrations.free_music import FreeMusicError, load_timestamps
 from ..models.storyboard import Storyboard, StoryboardMusic
@@ -18,6 +18,7 @@ from ..models.template import AudioCue
 from ..services import StoryboardBuilder
 from ..storage import AnalysisRow, ProjectMusicRow, ProjectRow, StoryboardRow, UploadRow, get_db
 from ..storage.filesystem import TemplateLoader
+from .ws import broadcast_workflow_status
 
 router = APIRouter(prefix="/projects/{project_id}/storyboard", tags=["storyboards"])
 
@@ -52,7 +53,7 @@ async def generate_storyboard(
     for u in upload_rows:
         a = db.query(AnalysisRow).filter_by(upload_id=u.id).first()
         cached = None
-        if a:
+        if a and dict(a.raw or {}).get("analyzer_version") == ANALYZER_VERSION:
             cached = ImageAnalysisResult(
                 room_type=a.room_type,
                 quality_score=a.quality_score,
@@ -67,6 +68,17 @@ async def generate_storyboard(
 
     builder = StoryboardBuilder()
     music, beat_timestamps_ms = _selected_music(project_id, db)
+
+    async def telemetry(payload: dict) -> None:
+        await broadcast_workflow_status(
+            project_id,
+            stage=payload.pop("stage", "storyboard"),
+            status=payload.pop("status", "running"),
+            message=payload.pop("message", "Working on storyboard."),
+            progress=payload.pop("progress", None),
+            detail=payload,
+        )
+
     storyboard = await builder.build(
         project=Project.model_validate(project_row),
         template=template,
@@ -74,6 +86,7 @@ async def generate_storyboard(
         audio_path_for_pacing=Path(music.audio_path) if music else None,
         beat_timestamps_ms=beat_timestamps_ms,
         music=music,
+        telemetry=telemetry,
     )
     if music:
         storyboard.audio_cues = [
@@ -92,14 +105,34 @@ async def generate_storyboard(
             f"using {len(beat_timestamps_ms)} stored beat timestamps."
         ).strip()
 
-    # Persist any newly computed analyses
-    for upload_id, _, _ in uploads:
+    # Persist any newly computed analyses so later storyboard attempts are fast.
+    for upload_id, analysis in builder.last_analyses_by_upload_id.items():
         existing = db.query(AnalysisRow).filter_by(upload_id=upload_id).first()
         if existing:
+            existing.room_type = analysis.room_type
+            existing.quality_score = analysis.quality_score
+            existing.framing = analysis.framing
+            existing.lighting = analysis.lighting
+            existing.dominant_colors = analysis.dominant_colors
+            existing.suggested_motion = analysis.suggested_motion
+            existing.notes = analysis.notes
+            existing.raw = analysis.raw
             continue
-        # match the upload back to the analyzer output via builder cache?
-        # builder doesn't expose it; cheaper to skip caching here and let
-        # next run hit the analyzer again. Optional: add a writer hook.
+        db.add(
+            AnalysisRow(
+                id=str(uuid.uuid4()),
+                upload_id=upload_id,
+                room_type=analysis.room_type,
+                quality_score=analysis.quality_score,
+                framing=analysis.framing,
+                lighting=analysis.lighting,
+                dominant_colors=analysis.dominant_colors,
+                suggested_motion=analysis.suggested_motion,
+                notes=analysis.notes,
+                raw=analysis.raw,
+                created_at=datetime.utcnow(),
+            )
+        )
 
     # Save storyboard
     sb_row = StoryboardRow(
