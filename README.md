@@ -4,6 +4,24 @@
 
 ---
 
+## Demo
+
+<p align="center">
+  <video src="assets/demo.mp4" controls width="800" muted playsinline></video>
+</p>
+
+> ▶️ [Watch the demo video](assets/demo.mp4) (if it doesn't play inline)
+
+<p align="center">
+  <img src="assets/demo-1.png" alt="ReelStudio demo screenshot 1" width="800" />
+  <br/><br/>
+  <img src="assets/demo-2.png" alt="ReelStudio demo screenshot 2" width="800" />
+  <br/><br/>
+  <img src="assets/demo-3.png" alt="ReelStudio demo screenshot 3" width="800" />
+</p>
+
+---
+
 ## Judging Criteria
 
 ---
